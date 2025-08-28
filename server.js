@@ -7,8 +7,6 @@ import cors from "cors";
 import connectToDb from "./config/db.js";
 import logger from "./core/logger.js";
 import path from "path";
-import swaggerSpec from "./utils/swagger.js";
-import swaggerUi from "swagger-ui-express";
 import { errorHandler } from "./utils/error-handler.js";
 import { prepareResponseMsg } from "./utils/helper.js";
 import { fileURLToPath } from "url";
@@ -55,8 +53,6 @@ app.use((req,res,next)=>{
     next();
 });
 
-// Serve Swagger UI at /api-docs
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use("/api", routes); 
 app.use(errorHandler);
 
