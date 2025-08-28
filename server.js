@@ -1,0 +1,79 @@
+import express from "express";
+import dotenv from "dotenv";
+import helmet from "helmet";
+import morgan from "morgan";
+import cors from "cors";
+
+import connectToDb from "./config/db.js";
+import logger from "./core/logger.js";
+import path from "path";
+import swaggerSpec from "./utils/swagger.js";
+import swaggerUi from "swagger-ui-express";
+import { errorHandler } from "./utils/error-handler.js";
+import { prepareResponseMsg } from "./utils/helper.js";
+import { fileURLToPath } from "url";
+import routes from "./routes/index.js";
+
+// Fix __dirname in ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load environment variables
+dotenv.config();
+
+// Initialize app
+const app = express();
+
+// Connect Database
+connectToDb();
+
+// Middleware
+app.use(helmet());
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+if (process.env.NODE_ENV === "development") {
+  app.use(morgan("dev"));
+}
+
+app.use("/static", express.static(path.join(__dirname, "public")));
+app.use((req,res,next)=>{
+    const startTime = Date.now();
+    res.on("finish",()=>{
+        const duration =  Date.now()-startTime;
+        const message = `${req.method} ${req.originalUrl} ${res.statusCode} - ${duration}ms`;
+        if(res.statusCode >= 500){
+            logger.error(message);
+        } else if( res.statusCode >= 400){
+            logger.warn(message);
+        }
+        else{
+            logger.info(message);
+        }
+    });
+    next();
+});
+
+// Serve Swagger UI at /api-docs
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use("/api", routes); 
+app.use(errorHandler);
+
+// // Catch unmatched API routes
+// app.use("/api/*", (req, res) => {
+//   const resp = prepareResponseMsg({}, false, "API endpoint not found", 404);
+//   res.status(404).send(resp);
+// });
+
+// // Catch other unmatched routes (optional)
+// app.use((req, res) => {
+//   const resp = prepareResponseMsg({}, false, "Page not found", 404);
+//   res.status(404).send(resp);
+// });
+const port = process.env.PORT || 5000;
+app.listen(port, "0.0.0.0", ()=>{
+    console.log(`The server is listening on Port ${port} !`);
+});
+
+export default app;
