@@ -1,6 +1,10 @@
 const messages = {
   100: "Tenant created successfully",
+  102: "Tenant list fetched successfully",
+  103: "Tenant resolved successfully",
   101: "Unexpected error occured",
+  150: "Validation failed",
+  151: "Tenant not found",
 };
 
 export const getMessage = (code) => {

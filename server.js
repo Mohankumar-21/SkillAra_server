@@ -3,6 +3,8 @@ import dotenv from "dotenv";
 import helmet from "helmet";
 import morgan from "morgan";
 import cors from "cors";
+import cookieParser from "cookie-parser";
+import sanitize from "mongo-sanitize";
 
 import connectToDb from "./config/db.js";
 import logger from "./core/logger.js";
@@ -11,6 +13,8 @@ import { errorHandler } from "./utils/error-handler.js";
 import { prepareResponseMsg } from "./utils/helper.js";
 import { fileURLToPath } from "url";
 import routes from "./routes/index.js";
+import { tenantContext } from "./middlewares/tenant-context.js";
+import { seedSuperAdmin } from "./utils/seedSuperAdmin.js";
 
 // Fix __dirname in ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -21,39 +25,61 @@ dotenv.config();
 
 // Initialize app
 const app = express();
+app.set("trust proxy", true);
 
 // Connect Database
-connectToDb();
+connectToDb().then(() => seedSuperAdmin()).catch((err) => logger.error(err));
 
 // Middleware
 app.use(helmet());
-app.use(cors());
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      const list = (process.env.CORS_ORIGINS || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (!origin) return cb(null, true);
+      if (list.length === 0) return cb(null, true);
+      if (list.includes(origin)) return cb(null, true);
+      return cb(new Error("CORS blocked"));
+    },
+    credentials: true,
+  })
+);
+app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use((req, _res, next) => {
+  // Basic NoSQL injection hardening for payload + query
+  if (req.body && typeof req.body === "object") req.body = sanitize(req.body);
+  if (req.query && typeof req.query === "object") req.query = sanitize(req.query);
+  next();
+});
 
 if (process.env.NODE_ENV === "development") {
   app.use(morgan("dev"));
 }
 
 app.use("/static", express.static(path.join(__dirname, "public")));
-app.use((req,res,next)=>{
-    const startTime = Date.now();
-    res.on("finish",()=>{
-        const duration =  Date.now()-startTime;
-        const message = `${req.method} ${req.originalUrl} ${res.statusCode} - ${duration}ms`;
-        if(res.statusCode >= 500){
-            logger.error(message);
-        } else if( res.statusCode >= 400){
-            logger.warn(message);
-        }
-        else{
-            logger.info(message);
-        }
-    });
-    next();
+app.use((req, res, next) => {
+  const startTime = Date.now();
+  res.on("finish", () => {
+    const duration = Date.now() - startTime;
+    const message = `${req.method} ${req.originalUrl} ${res.statusCode} - ${duration}ms`;
+    if (res.statusCode >= 500) {
+      logger.error(message);
+    } else if (res.statusCode >= 400) {
+      logger.warn(message);
+    } else {
+      logger.info(message);
+    }
+  });
+  next();
 });
 
-app.use("/api", routes); 
+app.use(tenantContext);
+app.use("/api", routes);
 app.use(errorHandler);
 
 // // Catch unmatched API routes
@@ -68,8 +94,8 @@ app.use(errorHandler);
 //   res.status(404).send(resp);
 // });
 const port = process.env.PORT || 5000;
-app.listen(port, "0.0.0.0", ()=>{
-    console.log(`The server is listening on Port ${port} !`);
+app.listen(port, "0.0.0.0", () => {
+  console.log(`The server is listening on Port ${port} !`);
 });
 
 export default app;
