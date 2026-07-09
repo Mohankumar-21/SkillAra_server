@@ -27,8 +27,17 @@ const planSchema = new mongoose.Schema(
     features: {
       maxUsers: { type: Number, required: true, min: 0 },
       maxCourses: { type: Number, required: true, min: 0 },
+      maxAIRequests: { type: Number, required: true, default: 0 }, // Monthly limit
       storageLimit: { type: Number, required: true, min: 0 }, // MB
       aiFeatures: { type: Boolean, required: true, default: false },
+      aiTier: { 
+        type: String, 
+        enum: ["BASIC", "ADVANCED", "PRO"], 
+        default: "BASIC" 
+      },
+      evaluationEnabled: { type: Boolean, default: false },
+      summarizationEnabled: { type: Boolean, default: false },
+      predictiveAnalyticsEnabled: { type: Boolean, default: false },
       analyticsAccess: { type: Boolean, required: true, default: false },
       prioritySupport: { type: Boolean, required: true, default: false },
     },

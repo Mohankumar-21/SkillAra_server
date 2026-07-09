@@ -18,6 +18,8 @@ Thumbs.db
 # Build files
 dist/
 build/
+uploads/*
+!uploads/.gitkeep
 
 # Nodemon
 nodemon.json (optional if you don't want to share)

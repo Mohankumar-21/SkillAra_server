@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import User from "../models/User.js";
 import Session from "../models/Session.js";
+import { resolveTenantFromRequest } from "../utils/resolve-tenant-request.js";
 import { verifyPassword } from "../services/password.js";
 import {
   getAccessTtlSeconds,
@@ -16,6 +17,8 @@ import { sha256 } from "../services/security.js";
 import { prepareResponseMsg } from "../utils/helper.js";
 import { requireAuth } from "../middlewares/auth.js";
 import { requireDb } from "../utils/db-state.js";
+import { checkPlanLimits } from "../middlewares/checkPlanLimits.js";
+import { registerStudent, changePassword } from "../controllers/userController.js";
 
 const router = express.Router();
 
@@ -24,6 +27,7 @@ const loginLimiter = rateLimit({
   limit: 5,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false },
 });
 
 const loginSchema = z.object({
@@ -32,6 +36,20 @@ const loginSchema = z.object({
     .email()
     .transform((v) => v.toLowerCase().trim()),
   password: z.string().min(6).max(200),
+});
+
+const registerSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  email: z
+    .string()
+    .email()
+    .transform((v) => v.toLowerCase().trim()),
+  password: z.string().min(6).max(200),
+});
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(6).max(200),
+  newPassword: z.string().min(6).max(200),
 });
 
 function cookieOptions(req) {
@@ -62,6 +80,47 @@ function clearAuthCookies(req, res) {
   res.clearCookie("access_token", cookieOptions(req));
   res.clearCookie("refresh_token", cookieOptions(req));
 }
+
+function requireActiveTenant(req, res, next) {
+  if (!req.tenant) {
+    return res.status(400).send(prepareResponseMsg({}, false, "Tenant context required", 400));
+  }
+  if (!req.tenant.status) {
+    return res.status(403).send(prepareResponseMsg({}, false, "Tenant is inactive", 403));
+  }
+  return next();
+}
+
+function validateBody(schema) {
+  return (req, res, next) => {
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res
+        .status(400)
+        .send(prepareResponseMsg({ issues: parsed.error.issues }, false, "Validation failed", 400));
+    }
+    req.body = parsed.data;
+    return next();
+  };
+}
+
+router.post(
+  "/register",
+  requireDb,
+  loginLimiter,
+  requireActiveTenant,
+  validateBody(registerSchema),
+  checkPlanLimits({ resource: "users" }),
+  registerStudent
+);
+
+router.post(
+  "/change-password",
+  requireDb,
+  requireAuth,
+  validateBody(changePasswordSchema),
+  changePassword
+);
 
 router.post("/admin/login", requireDb, loginLimiter, async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
@@ -131,7 +190,11 @@ router.post("/admin/login", requireDb, loginLimiter, async (req, res) => {
     .status(200)
     .send(
       prepareResponseMsg(
-        { user: { id: user._id, email: user.email, role: user.role } },
+        {
+          user: { id: user._id, email: user.email, role: user.role },
+          accessToken,
+          refreshToken,
+        },
         true,
         "Logged in",
         200
@@ -140,9 +203,41 @@ router.post("/admin/login", requireDb, loginLimiter, async (req, res) => {
 });
 
 router.post("/tenant/login", requireDb, loginLimiter, async (req, res) => {
-  if (!req.tenant) {
-    return res.status(400).send(prepareResponseMsg({}, false, "Tenant context required", 400));
+  const { subdomain, tenant } = await resolveTenantFromRequest(req);
+
+  if (!subdomain) {
+    return res
+      .status(400)
+      .send(
+        prepareResponseMsg(
+          {},
+          false,
+          "Workspace subdomain is required. Use your organization URL (e.g. acmebootcamp.localhost:5174/login).",
+          400
+        )
+      );
   }
+
+  if (!tenant) {
+    return res
+      .status(404)
+      .send(
+        prepareResponseMsg(
+          { subdomain },
+          false,
+          `Organization "${subdomain}" was not found. Create it in super admin or check the subdomain.`,
+          404
+        )
+      );
+  }
+
+  if (tenant.status === false) {
+    return res
+      .status(403)
+      .send(prepareResponseMsg({}, false, "Organization is inactive", 403));
+  }
+
+  req.tenant = tenant;
 
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -211,7 +306,11 @@ router.post("/tenant/login", requireDb, loginLimiter, async (req, res) => {
     .status(200)
     .send(
       prepareResponseMsg(
-        { user: { id: user._id, email: user.email, role: user.role } },
+        {
+          user: { id: user._id, email: user.email, role: user.role },
+          accessToken,
+          refreshToken,
+        },
         true,
         "Logged in",
         200
@@ -220,7 +319,7 @@ router.post("/tenant/login", requireDb, loginLimiter, async (req, res) => {
 });
 
 router.post("/refresh", requireDb, async (req, res) => {
-  const token = req.cookies?.refresh_token;
+  const token = req.body?.refreshToken || req.cookies?.refresh_token;
   if (!token) return res.status(401).send(prepareResponseMsg({}, false, "Unauthorized", 401));
 
   let decoded;
@@ -266,11 +365,13 @@ router.post("/refresh", requireDb, async (req, res) => {
   );
 
   setAuthCookies(req, res, { accessToken, refreshToken });
-  return res.status(200).send(prepareResponseMsg({ ok: true }, true, "Refreshed", 200));
+  return res
+    .status(200)
+    .send(prepareResponseMsg({ accessToken, refreshToken }, true, "Refreshed", 200));
 });
 
 router.post("/logout", requireDb, async (req, res) => {
-  const token = req.cookies?.refresh_token;
+  const token = req.body?.refreshToken || req.cookies?.refresh_token;
   if (token) {
     try {
       const decoded = verifyRefreshToken(token);

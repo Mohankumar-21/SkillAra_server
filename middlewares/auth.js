@@ -43,6 +43,26 @@ export function requireRole(...roles) {
   };
 }
 
+export async function optionalAuth(req, res, next) {
+  try {
+    const header = req.headers.authorization || "";
+    const bearer = header.startsWith("Bearer ") ? header.slice(7) : null;
+    const cookieToken = req.cookies?.access_token || null;
+    const token = bearer || cookieToken;
+
+    if (token) {
+      const decoded = verifyAccessToken(token);
+      const user = await User.findById(decoded.sub);
+      if (user && user.status === "ACTIVE") {
+        req.user = user;
+      }
+    }
+    return next();
+  } catch {
+    return next();
+  }
+}
+
 export function requireTenant(req, res, next) {
   // SUPER_ADMIN bypasses tenant context
   if (req.user?.role === "SUPER_ADMIN") return next();
@@ -56,7 +76,7 @@ export function requireTenant(req, res, next) {
     });
   }
 
-  if (!req.user?.tenantId || String(req.user.tenantId) !== String(tenant._id)) {
+  if (req.user && (!req.user.tenantId || String(req.user.tenantId) !== String(tenant._id))) {
     return res
       .status(403)
       .send({ status: false, data: {}, message: { errorMessage: "Forbidden", code: 403 } });

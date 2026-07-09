@@ -1,5 +1,5 @@
 import express from "express";
-import { createTenant, listTenants, resolveTenant } from "../controllers/tenantController.js";
+import { createTenant, listTenants, getTenant, updateTenant, updateTenantStatus, resolveTenant, checkTenantSubdomain } from "../controllers/tenantController.js";
 import { body, validationResult } from "express-validator";
 import { prepareResponseMsg } from "../utils/helper.js";
 import { getMessage } from "../core/message.js";
@@ -16,6 +16,8 @@ tenantRouter.get(
 ); // GET /tenants
 
 tenantRouter.get("/resolve", requireDb, resolveTenant); // GET /tenants/resolve (based on subdomain)
+
+tenantRouter.get("/check/:subdomain", requireDb, checkTenantSubdomain); // Public workspace lookup
 
 tenantRouter.post(
   "/",
@@ -48,5 +50,65 @@ tenantRouter.post(
   },
   createTenant
 ); // POST /tenants
+
+tenantRouter.get(
+  "/:id",
+  requireDb,
+  requireAuth,
+  requireRole("SUPER_ADMIN"),
+  (req, res, next) => {
+    if (!/^[0-9a-fA-F]{24}$/.test(req.params.id)) {
+      return res.status(400).send(prepareResponseMsg({}, false, "Invalid tenant id", 400));
+    }
+    return next();
+  },
+  getTenant
+);
+
+tenantRouter.patch(
+  "/:id/status",
+  requireDb,
+  requireAuth,
+  requireRole("SUPER_ADMIN"),
+  (req, res, next) => {
+    if (!/^[0-9a-fA-F]{24}$/.test(req.params.id)) {
+      return res.status(400).send(prepareResponseMsg({}, false, "Invalid tenant id", 400));
+    }
+    return next();
+  },
+  [body("status").isBoolean()],
+  (req, res, next) => {
+    const errors = validationResult(req);
+    if (errors.isEmpty()) return next();
+    return res.status(400).send(prepareResponseMsg({ errors: errors.array() }, false, getMessage(150), 400));
+  },
+  updateTenantStatus
+);
+
+tenantRouter.patch(
+  "/:id",
+  requireDb,
+  requireAuth,
+  requireRole("SUPER_ADMIN"),
+  (req, res, next) => {
+    if (!/^[0-9a-fA-F]{24}$/.test(req.params.id)) {
+      return res.status(400).send(prepareResponseMsg({}, false, "Invalid tenant id", 400));
+    }
+    return next();
+  },
+  [
+    body("tenant_name").optional().isString().trim().isLength({ min: 2, max: 80 }),
+    body("email").optional().isEmail().normalizeEmail(),
+    body("planId").optional().matches(/^[0-9a-fA-F]{24}$/),
+    body("status").optional().isBoolean(),
+    body("subscriptionStatus").optional().isIn(["ACTIVE", "EXPIRED", "TRIAL"]),
+  ],
+  (req, res, next) => {
+    const errors = validationResult(req);
+    if (errors.isEmpty()) return next();
+    return res.status(400).send(prepareResponseMsg({ errors: errors.array() }, false, getMessage(150), 400));
+  },
+  updateTenant
+);
 
 export default tenantRouter;
