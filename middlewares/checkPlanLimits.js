@@ -48,16 +48,46 @@ export function checkPlanLimits({ resource } = { resource: "users" }) {
 
       if (resource === "courses") {
         const maxCourses = Number(plan.features?.maxCourses ?? 0);
-
-        // Course model may not exist yet in this codebase.
         const CourseModel = mongoose.connection.models.Course;
         if (!CourseModel) return next();
 
         const currentCourses = await CourseModel.countDocuments({ tenantId: tenant._id });
         if (currentCourses >= maxCourses) {
-          return res.status(403).send(
-            prepareResponseMsg({}, false, LIMIT_EXCEEDED_MESSAGE, 403)
-          );
+          return res.status(403).send(prepareResponseMsg({}, false, LIMIT_EXCEEDED_MESSAGE, 403));
+        }
+      }
+
+      if (resource.startsWith("ai:")) {
+        const aiFeature = resource.split(":")[1]; // tutor, evaluation, summarization, analytics
+        
+        // 1. Check if AI features are enabled at all
+        if (!plan.features?.aiFeatures) {
+          return res.status(403).send(prepareResponseMsg({}, false, "AI features not included in your plan", 403));
+        }
+
+        // 2. Check specific feature flag if applicable
+        if (aiFeature === "evaluation" && !plan.features?.evaluationEnabled) {
+          return res.status(403).send(prepareResponseMsg({}, false, "AI Evaluation not included in your plan", 403));
+        }
+        if (aiFeature === "summarization" && !plan.features?.summarizationEnabled) {
+          return res.status(403).send(prepareResponseMsg({}, false, "Content Summarization not included in your plan", 403));
+        }
+        if (aiFeature === "analytics" && !plan.features?.predictiveAnalyticsEnabled) {
+          return res.status(403).send(prepareResponseMsg({}, false, "Predictive Analytics not included in your plan", 403));
+        }
+
+        // 3. Check monthly request limit
+        const maxAI = Number(plan.features?.maxAIRequests ?? 0);
+        if (maxAI > 0) { // 0 might mean unlimited for enterprise? or 0 means none. 
+                         // Let's assume > 0 is a limit.
+          const month = new Date().toISOString().slice(0, 7);
+          const AIUsageModel = mongoose.connection.models.AIUsage;
+          if (AIUsageModel) {
+            const usage = await AIUsageModel.findOne({ tenantId: tenant._id, month });
+            if (usage && usage.requestCount >= maxAI) {
+              return res.status(403).send(prepareResponseMsg({}, false, "Monthly AI request limit reached", 403));
+            }
+          }
         }
       }
 

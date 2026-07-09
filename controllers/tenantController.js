@@ -7,7 +7,7 @@ import { hashPassword } from "../services/password.js";
 
 export const createTenant = async (req, res, next) => {
   try {
-    const { tenant_name, domain, sub_domain, email, logo, status, admin, planId } = req.body;
+    const { tenant_name, domain, sub_domain, email, logo, branding, status, admin, planId } = req.body;
 
     const plan = await Plan.findById(planId);
     if (!plan || plan.isActive !== true) {
@@ -56,6 +56,7 @@ export const createTenant = async (req, res, next) => {
       sub_domain,
       email,
       logo,
+      branding: branding || {},
       status,
       planId: plan._id,
       subscriptionStatus: "ACTIVE",
@@ -68,7 +69,14 @@ export const createTenant = async (req, res, next) => {
     const adminEmail = (admin?.email || email || "").toLowerCase().trim();
     const adminPassword =
       admin?.password || process.env.DEFAULT_TENANT_ADMIN_PASSWORD || "ChangeMe#12345";
+    if (admin?.role && admin.role !== "TENANT_ADMIN") {
+      return res
+        .status(400)
+        .send(prepareResponseMsg({}, false, "Organization owner must have TENANT_ADMIN role", 400));
+    }
+
     const adminName = admin?.name || `${tenant_name} Admin`;
+    const adminRole = "TENANT_ADMIN";
 
     const passwordHash = await hashPassword(adminPassword);
     const adminUser = await User.create({
@@ -76,7 +84,7 @@ export const createTenant = async (req, res, next) => {
       name: adminName,
       email: adminEmail,
       passwordHash,
-      role: "TENANT_ADMIN",
+      role: adminRole,
       status: "ACTIVE",
     });
 
@@ -98,10 +106,107 @@ export const createTenant = async (req, res, next) => {
 
 export const listTenants = async (req, res, next) => {
   try {
-    const tenants = await Tenant.find({}).sort({ created_on: -1 });
+    const tenants = await Tenant.find({})
+      .populate("planId", "name")
+      .sort({ created_on: -1 })
+      .lean();
+
+    const data = tenants.map((t) => ({
+      ...t,
+      plan: t.planId?.name || "FREE",
+      planId: t.planId?._id || t.planId,
+    }));
+
     const message = getMessage(102);
-    const resp = prepareResponseMsg(tenants, true, message, 200);
+    const resp = prepareResponseMsg(data, true, message, 200);
     return res.status(200).send(resp);
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const getTenant = async (req, res, next) => {
+  try {
+    const tenant = await Tenant.findById(req.params.id).populate("planId", "name").lean();
+    if (!tenant) {
+      return res.status(404).send(prepareResponseMsg({}, false, "Tenant not found", 404));
+    }
+    const data = {
+      ...tenant,
+      plan: tenant.planId?.name || "FREE",
+      planId: tenant.planId?._id || tenant.planId,
+    };
+    return res.status(200).send(prepareResponseMsg(data, true, getMessage(103), 200));
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const updateTenant = async (req, res, next) => {
+  try {
+    const { tenant_name, email, planId, status, subscriptionStatus, logo, branding } = req.body;
+    const tenant = await Tenant.findById(req.params.id);
+    if (!tenant) {
+      return res.status(404).send(prepareResponseMsg({}, false, "Tenant not found", 404));
+    }
+
+    if (tenant_name !== undefined) tenant.tenant_name = tenant_name;
+    if (email !== undefined) {
+      const dup = await Tenant.findOne({ email, _id: { $ne: tenant._id } });
+      if (dup) {
+        return res
+          .status(409)
+          .send(prepareResponseMsg({}, false, "Email already in use", 409));
+      }
+      tenant.email = email;
+    }
+    if (planId !== undefined) {
+      const plan = await Plan.findById(planId);
+      if (!plan || plan.isActive !== true) {
+        return res
+          .status(400)
+          .send(prepareResponseMsg({}, false, "Invalid or inactive plan", 400));
+      }
+      tenant.planId = plan._id;
+    }
+    if (typeof status === "boolean") tenant.status = status;
+    if (subscriptionStatus) tenant.subscriptionStatus = subscriptionStatus;
+    if (req.body.logo !== undefined) tenant.logo = req.body.logo;
+    if (branding !== undefined) {
+      tenant.branding = {
+        welcome_message: branding.welcome_message ?? tenant.branding?.welcome_message ?? "",
+        primary_color: branding.primary_color ?? tenant.branding?.primary_color ?? "#4F46E5",
+        secondary_color: branding.secondary_color ?? tenant.branding?.secondary_color ?? "#7C3AED",
+      };
+    }
+
+    await tenant.save();
+    const populated = await Tenant.findById(tenant._id).populate("planId", "name").lean();
+    const data = {
+      ...populated,
+      plan: populated.planId?.name || "FREE",
+      planId: populated.planId?._id || populated.planId,
+    };
+    return res.status(200).send(prepareResponseMsg(data, true, getMessage(101), 200));
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const updateTenantStatus = async (req, res, next) => {
+  try {
+    const tenant = await Tenant.findById(req.params.id);
+    if (!tenant) {
+      return res.status(404).send(prepareResponseMsg({}, false, "Tenant not found", 404));
+    }
+    if (typeof req.body.status !== "boolean") {
+      return res.status(400).send(prepareResponseMsg({}, false, "status must be a boolean", 400));
+    }
+    tenant.status = req.body.status;
+    await tenant.save();
+    return res
+      .status(200)
+      .send(prepareResponseMsg({ id: tenant._id, status: tenant.status }, true, getMessage(101), 200));
   } catch (err) {
     return next(err);
   }
@@ -114,7 +219,7 @@ export const resolveTenant = async (req, res) => {
     return res.status(200).send(resp);
   }
 
-  if (!req.tenant) {
+  if (!req.tenant || req.tenant.status === false) {
     const resp = prepareResponseMsg({}, false, getMessage(151), 404);
     return res.status(404).send(resp);
   }
@@ -126,4 +231,48 @@ export const resolveTenant = async (req, res) => {
     200
   );
   return res.status(200).send(resp);
+};
+
+const RESERVED = new Set(["www", "admin", "api"]);
+
+export const checkTenantSubdomain = async (req, res) => {
+  const sub = String(req.params.subdomain || "")
+    .trim()
+    .toLowerCase();
+
+  if (!sub || !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(sub)) {
+    return res
+      .status(400)
+      .send(prepareResponseMsg({ exists: false }, false, "Invalid workspace name", 400));
+  }
+
+  if (RESERVED.has(sub)) {
+    return res
+      .status(404)
+      .send(prepareResponseMsg({ exists: false }, false, "Workspace not found", 404));
+  }
+
+  const tenant = await Tenant.findOne({ sub_domain: sub }).select(
+    "tenant_name sub_domain status logo"
+  );
+
+  if (!tenant || tenant.status === false) {
+    return res
+      .status(404)
+      .send(prepareResponseMsg({ exists: false }, false, "Workspace not found", 404));
+  }
+
+  return res.status(200).send(
+    prepareResponseMsg(
+      {
+        exists: true,
+        tenant_name: tenant.tenant_name,
+        sub_domain: tenant.sub_domain,
+        logo: tenant.logo,
+      },
+      true,
+      "Workspace found",
+      200
+    )
+  );
 };

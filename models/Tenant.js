@@ -34,6 +34,11 @@ const tenantSchema = new mongoose.Schema(
         image_blob: "",
       },
     },
+    branding: {
+      welcome_message: { type: String, default: "", maxlength: 250 },
+      primary_color: { type: String, default: "#4F46E5" },
+      secondary_color: { type: String, default: "#7C3AED" },
+    },
     user_count: {
       type: Number,
       default: 0,

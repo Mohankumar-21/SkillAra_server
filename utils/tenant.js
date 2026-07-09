@@ -8,8 +8,21 @@ export function extractSubdomain(hostname, rootDomain) {
   const host = normalizeHost(hostname);
   if (!host) return null;
 
+  // acme.localhost → tenant acme (local subdomain dev)
+  if (host.endsWith(".localhost")) {
+    const sub = host.slice(0, -".localhost".length);
+    if (sub && !sub.includes(".")) return sub;
+    return null;
+  }
+
   // localhost or raw IP does not represent tenant subdomain
-  if (host === "localhost" || /^[0-9.]+$/.test(host)) return null;
+  if (host === "localhost" || host === "127.0.0.1" || /^[0-9.]+$/.test(host)) return null;
+
+  // acme.localhost → acme (local subdomain dev)
+  if (host.endsWith(".localhost")) {
+    const sub = host.slice(0, -".localhost".length);
+    return sub && !sub.includes(".") ? sub : null;
+  }
 
   const root = normalizeHost(rootDomain);
   if (!root) {
