@@ -14,11 +14,12 @@ import {
   verifyRefreshToken,
 } from "../services/jwt.js";
 import { sha256 } from "../services/security.js";
-import { prepareResponseMsg } from "../utils/helper.js";
+import { prepareResponseMsg, sendError } from "../utils/helper.js";
 import { requireAuth } from "../middlewares/auth.js";
 import { requireDb } from "../utils/db-state.js";
-import { checkPlanLimits } from "../middlewares/checkPlanLimits.js";
-import { registerStudent, changePassword } from "../controllers/userController.js";
+import { validationMessageFromZod } from "../utils/errorMessages.js";
+import { validateBody } from "../utils/validate.js";
+import { changePassword } from "../controllers/userController.js";
 import { toPublicUser } from "../utils/user.js";
 
 const router = express.Router();
@@ -84,35 +85,18 @@ function clearAuthCookies(req, res) {
 
 function requireActiveTenant(req, res, next) {
   if (!req.tenant) {
-    return res.status(400).send(prepareResponseMsg({}, false, "Tenant context required", 400));
+    return sendError(res, "AUTH_TENANT_REQUIRED", 400);
   }
   if (!req.tenant.status) {
-    return res.status(403).send(prepareResponseMsg({}, false, "Tenant is inactive", 403));
+    return sendError(res, "AUTH_TENANT_INACTIVE", 403);
   }
   return next();
-}
-
-function validateBody(schema) {
-  return (req, res, next) => {
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) {
-      return res
-        .status(400)
-        .send(prepareResponseMsg({ issues: parsed.error.issues }, false, "Validation failed", 400));
-    }
-    req.body = parsed.data;
-    return next();
-  };
 }
 
 router.post(
   "/register",
   requireDb,
-  loginLimiter,
-  requireActiveTenant,
-  validateBody(registerSchema),
-  checkPlanLimits({ resource: "users" }),
-  registerStudent
+  (_req, res) => sendError(res, "AUTH_REGISTRATION_CLOSED", 403)
 );
 
 router.post(
@@ -126,19 +110,20 @@ router.post(
 router.post("/admin/login", requireDb, loginLimiter, async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res
-      .status(400)
-      .send(prepareResponseMsg({ issues: parsed.error.issues }, false, "Validation failed", 400));
+    return sendError(res, "GENERAL_VALIDATION_FAILED", 400, {
+      issues: parsed.error.issues,
+      detail: validationMessageFromZod(parsed.error),
+    });
   }
 
   const { email, password } = parsed.data;
   const user = await User.findOne({ email, role: "SUPER_ADMIN" });
   if (!user) {
-    return res.status(401).send(prepareResponseMsg({}, false, "Invalid credentials", 401));
+    return sendError(res, "AUTH_INVALID_CREDENTIALS", 401);
   }
 
   if (user.lockUntil && user.lockUntil > new Date()) {
-    return res.status(423).send(prepareResponseMsg({}, false, "Account temporarily locked", 423));
+    return sendError(res, "AUTH_ACCOUNT_LOCKED", 423);
   }
 
   const ok = await verifyPassword(password, user.passwordHash);
@@ -152,7 +137,7 @@ router.post("/admin/login", requireDb, loginLimiter, async (req, res) => {
       { _id: user._id },
       { $set: { lockUntil }, $inc: { failedLoginAttempts: 1 } }
     );
-    return res.status(401).send(prepareResponseMsg({}, false, "Invalid credentials", 401));
+    return sendError(res, "AUTH_INVALID_CREDENTIALS", 401);
   }
 
   await User.updateOne(
@@ -203,70 +188,77 @@ router.post("/admin/login", requireDb, loginLimiter, async (req, res) => {
     );
 });
 
-router.post("/tenant/login", requireDb, loginLimiter, async (req, res) => {
+const portalHintSchema = z.object({
+  email: z
+    .string()
+    .email()
+    .transform((v) => v.toLowerCase().trim()),
+});
+
+const ADMIN_PORTAL_ROLES = new Set(["TENANT_ADMIN", "ORG_ADMIN"]);
+const WORKSPACE_ROLES = new Set(["TENANT_ADMIN", "ORG_ADMIN", "TUTOR", "STUDENT"]);
+
+function portalForRole(role) {
+  return ADMIN_PORTAL_ROLES.has(role) ? "admin" : "learning";
+}
+
+async function resolveActiveTenant(req, res) {
   const { subdomain, tenant } = await resolveTenantFromRequest(req);
 
   if (!subdomain) {
-    return res
-      .status(400)
-      .send(
-        prepareResponseMsg(
-          {},
-          false,
-          "Workspace subdomain is required. Use your organization URL (e.g. acmebootcamp.localhost:5174/login).",
-          400
-        )
-      );
+    sendError(res, "AUTH_TENANT_WORKSPACE_REQUIRED", 400);
+    return null;
   }
 
   if (!tenant) {
-    return res
-      .status(404)
-      .send(
-        prepareResponseMsg(
-          { subdomain },
-          false,
-          `Organization "${subdomain}" was not found. Create it in super admin or check the subdomain.`,
-          404
-        )
-      );
+    sendError(res, "TENANT_NOT_FOUND", 404, { subdomain });
+    return null;
   }
 
   if (tenant.status === false) {
-    return res
-      .status(403)
-      .send(prepareResponseMsg({}, false, "Organization is inactive", 403));
+    sendError(res, "AUTH_TENANT_INACTIVE", 403);
+    return null;
   }
 
   req.tenant = tenant;
+  return tenant;
+}
 
+async function authenticateTenantUser(req, res, { allowedRoles }) {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res
-      .status(400)
-      .send(prepareResponseMsg({ issues: parsed.error.issues }, false, "Validation failed", 400));
+    sendError(res, "GENERAL_VALIDATION_FAILED", 400, {
+      issues: parsed.error.issues,
+      detail: validationMessageFromZod(parsed.error),
+    });
+    return null;
   }
 
   const { email, password } = parsed.data;
   const user = await User.findOne({ email, tenantId: req.tenant._id });
-  if (!user) return res.status(401).send(prepareResponseMsg({}, false, "Invalid credentials", 401));
+  if (!user) {
+    sendError(res, "AUTH_INVALID_CREDENTIALS", 401);
+    return null;
+  }
 
-  if (!["TENANT_ADMIN", "ORG_ADMIN"].includes(user.role)) {
-    return res
-      .status(403)
-      .send(prepareResponseMsg({}, false, "This account cannot access the organization admin panel", 403));
+  if (!allowedRoles.has(user.role)) {
+    sendError(res, "AUTH_TENANT_PANEL_DENIED", 403);
+    return null;
   }
 
   if (user.status === "DISABLED") {
-    return res.status(403).send(prepareResponseMsg({}, false, "Account is disabled", 403));
+    sendError(res, "AUTH_ACCOUNT_DISABLED", 403);
+    return null;
   }
 
   if (user.invitationStatus === "BLOCKED") {
-    return res.status(403).send(prepareResponseMsg({}, false, "Account is blocked", 403));
+    sendError(res, "AUTH_ACCOUNT_BLOCKED", 403);
+    return null;
   }
 
   if (user.lockUntil && user.lockUntil > new Date()) {
-    return res.status(423).send(prepareResponseMsg({}, false, "Account temporarily locked", 423));
+    sendError(res, "AUTH_ACCOUNT_LOCKED", 423);
+    return null;
   }
 
   const ok = await verifyPassword(password, user.passwordHash);
@@ -280,7 +272,8 @@ router.post("/tenant/login", requireDb, loginLimiter, async (req, res) => {
       { _id: user._id },
       { $set: { lockUntil }, $inc: { failedLoginAttempts: 1 } }
     );
-    return res.status(401).send(prepareResponseMsg({}, false, "Invalid credentials", 401));
+    sendError(res, "AUTH_INVALID_CREDENTIALS", 401);
+    return null;
   }
 
   await User.updateOne(
@@ -318,38 +311,77 @@ router.post("/tenant/login", requireDb, loginLimiter, async (req, res) => {
   );
 
   setAuthCookies(req, res, { accessToken, refreshToken });
-  return res
-    .status(200)
-    .send(
-      prepareResponseMsg(
-        {
-          user: toPublicUser(user),
-          accessToken,
-          refreshToken,
-        },
-        true,
-        "Logged in",
-        200
-      )
+  return res.status(200).send(
+    prepareResponseMsg(
+      {
+        user: toPublicUser(user),
+        accessToken,
+        refreshToken,
+        portal: portalForRole(user.role),
+      },
+      true,
+      "Logged in",
+      200
+    )
+  );
+}
+
+router.post("/workspace/portal-hint", requireDb, loginLimiter, async (req, res) => {
+  const parsed = portalHintSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return sendError(res, "GENERAL_VALIDATION_FAILED", 400, {
+      issues: parsed.error.issues,
+      detail: validationMessageFromZod(parsed.error),
+    });
+  }
+
+  const tenant = await resolveActiveTenant(req, res);
+  if (!tenant) return undefined;
+
+  const user = await User.findOne({
+    email: parsed.data.email,
+    tenantId: tenant._id,
+  }).select("role");
+
+  if (!user || !WORKSPACE_ROLES.has(user.role)) {
+    return res.status(200).send(
+      prepareResponseMsg({ portal: null }, true, "OK", 200)
     );
+  }
+
+  return res.status(200).send(
+    prepareResponseMsg({ portal: portalForRole(user.role) }, true, "OK", 200)
+  );
+});
+
+router.post("/workspace/login", requireDb, loginLimiter, async (req, res) => {
+  const tenant = await resolveActiveTenant(req, res);
+  if (!tenant) return undefined;
+  return authenticateTenantUser(req, res, { allowedRoles: WORKSPACE_ROLES });
+});
+
+router.post("/tenant/login", requireDb, loginLimiter, async (req, res) => {
+  const tenant = await resolveActiveTenant(req, res);
+  if (!tenant) return undefined;
+  return authenticateTenantUser(req, res, { allowedRoles: ADMIN_PORTAL_ROLES });
 });
 
 router.post("/refresh", requireDb, async (req, res) => {
   const token = req.body?.refreshToken || req.cookies?.refresh_token;
-  if (!token) return res.status(401).send(prepareResponseMsg({}, false, "Unauthorized", 401));
+  if (!token) return sendError(res, "GENERAL_UNAUTHORIZED", 401);
 
   let decoded;
   try {
     decoded = verifyRefreshToken(token);
   } catch {
     clearAuthCookies(req, res);
-    return res.status(401).send(prepareResponseMsg({}, false, "Unauthorized", 401));
+    return sendError(res, "AUTH_SESSION_EXPIRED", 401);
   }
 
   const session = await Session.findById(decoded.sid);
   if (!session || session.revokedAt || session.expiresAt < new Date()) {
     clearAuthCookies(req, res);
-    return res.status(401).send(prepareResponseMsg({}, false, "Unauthorized", 401));
+    return sendError(res, "AUTH_SESSION_EXPIRED", 401);
   }
 
   if (session.refreshTokenHash !== sha256(token)) {
@@ -358,13 +390,13 @@ router.post("/refresh", requireDb, async (req, res) => {
       { $set: { revokedAt: new Date(), revokedReason: "token_mismatch" } }
     );
     clearAuthCookies(req, res);
-    return res.status(401).send(prepareResponseMsg({}, false, "Unauthorized", 401));
+    return sendError(res, "AUTH_SESSION_EXPIRED", 401);
   }
 
   const user = await User.findById(session.userId);
   if (!user || user.status !== "ACTIVE") {
     clearAuthCookies(req, res);
-    return res.status(401).send(prepareResponseMsg({}, false, "Unauthorized", 401));
+    return sendError(res, "AUTH_SESSION_EXPIRED", 401);
   }
 
   const accessToken = signAccessToken({

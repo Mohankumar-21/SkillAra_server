@@ -23,7 +23,7 @@ export async function enrollInCourse(req, res, next) {
   try {
     const { courseId } = req.body;
     const userId = req.user._id;
-    const tenantId = req.tenant._id;
+    const tenantId = req.tenantId;
 
     const course = await Course.findOne({
       _id: courseId,
@@ -100,7 +100,7 @@ export async function getMyEnrollments(req, res, next) {
   try {
     const enrollments = await Enrollment.find({
       userId: req.user._id,
-      tenantId: req.tenant._id,
+      tenantId: req.tenantId,
       status: { $in: ["ACTIVE", "COMPLETED"] },
     })
       .populate("courseId", "title description thumbnail price status stats")
@@ -108,7 +108,7 @@ export async function getMyEnrollments(req, res, next) {
 
     const progressList = await UserProgress.find({
       userId: req.user._id,
-      tenantId: req.tenant._id,
+      tenantId: req.tenantId,
     });
 
     const progressMap = Object.fromEntries(
@@ -133,7 +133,7 @@ export async function getMyEnrollments(req, res, next) {
 export async function getCourseEnrollments(req, res, next) {
   try {
     const { courseId } = req.params;
-    const course = await Course.findOne({ _id: courseId, tenantId: req.tenant._id });
+    const course = await Course.findOne({ _id: courseId, tenantId: req.tenantId });
     if (!course) {
       return res.status(404).send(prepareResponseMsg({}, false, "Course not found", 404));
     }
@@ -145,13 +145,13 @@ export async function getCourseEnrollments(req, res, next) {
 
     const enrollments = await Enrollment.find({
       courseId,
-      tenantId: req.tenant._id,
+      tenantId: req.tenantId,
       status: { $in: ["ACTIVE", "COMPLETED"] },
     })
       .populate("userId", "name email role")
       .sort({ enrolledAt: -1 });
 
-    const progressList = await UserProgress.find({ courseId, tenantId: req.tenant._id });
+    const progressList = await UserProgress.find({ courseId, tenantId: req.tenantId });
     const progressMap = Object.fromEntries(
       progressList.map((p) => [String(p.userId), p])
     );
@@ -177,7 +177,7 @@ export async function dropEnrollment(req, res, next) {
   try {
     const enrollment = await Enrollment.findOne({
       _id: req.params.id,
-      tenantId: req.tenant._id,
+      tenantId: req.tenantId,
     });
     if (!enrollment) {
       return res.status(404).send(prepareResponseMsg({}, false, "Enrollment not found", 404));

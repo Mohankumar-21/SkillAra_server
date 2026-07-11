@@ -80,7 +80,7 @@ function gradeQuiz(questions, answers) {
 export async function createQuiz(req, res, next) {
   try {
     const { lessonId, title, questions, timeLimitMinutes, passingScore, status } = req.body;
-    const ctx = await resolveLessonContext(lessonId, req.tenant._id);
+    const ctx = await resolveLessonContext(lessonId, req.tenantId);
     if (!ctx) {
       return res.status(404).send(prepareResponseMsg({}, false, "Lesson not found", 404));
     }
@@ -88,7 +88,7 @@ export async function createQuiz(req, res, next) {
     const quiz = await Quiz.create({
       lessonId,
       courseId: ctx.course._id,
-      tenantId: req.tenant._id,
+      tenantId: req.tenantId,
       title,
       questions,
       timeLimitMinutes: timeLimitMinutes || 0,
@@ -116,7 +116,7 @@ export async function createQuiz(req, res, next) {
 export async function generateAndSaveQuiz(req, res, next) {
   try {
     const { lessonId, questionCount, title, passingScore, status } = req.body;
-    const ctx = await resolveLessonContext(lessonId, req.tenant._id);
+    const ctx = await resolveLessonContext(lessonId, req.tenantId);
     if (!ctx) {
       return res.status(404).send(prepareResponseMsg({}, false, "Lesson not found", 404));
     }
@@ -129,12 +129,12 @@ export async function generateAndSaveQuiz(req, res, next) {
         .send(prepareResponseMsg({}, false, "Failed to generate quiz questions", 500));
     }
 
-    await incrementAiUsage(req.tenant._id);
+    await incrementAiUsage(req.tenantId);
 
     const quiz = await Quiz.create({
       lessonId,
       courseId: ctx.course._id,
-      tenantId: req.tenant._id,
+      tenantId: req.tenantId,
       title: title || `Quiz: ${ctx.lesson.title}`,
       questions,
       passingScore: passingScore ?? 60,
@@ -163,7 +163,7 @@ export async function getQuizByLesson(req, res, next) {
     const { lessonId } = req.params;
     const quiz = await Quiz.findOne({
       lessonId,
-      tenantId: req.tenant._id,
+      tenantId: req.tenantId,
       status: "PUBLISHED",
     }).sort({ created_on: -1 });
 
@@ -182,7 +182,7 @@ export async function getQuizByLesson(req, res, next) {
 
 export async function getQuizById(req, res, next) {
   try {
-    const quiz = await Quiz.findOne({ _id: req.params.id, tenantId: req.tenant._id });
+    const quiz = await Quiz.findOne({ _id: req.params.id, tenantId: req.tenantId });
     if (!quiz) {
       return res.status(404).send(prepareResponseMsg({}, false, "Quiz not found", 404));
     }
@@ -200,7 +200,7 @@ export async function submitQuiz(req, res, next) {
   try {
     const quiz = await Quiz.findOne({
       _id: req.params.id,
-      tenantId: req.tenant._id,
+      tenantId: req.tenantId,
       status: "PUBLISHED",
     });
     if (!quiz) {
@@ -210,7 +210,7 @@ export async function submitQuiz(req, res, next) {
     const enrollment = await Enrollment.findOne({
       userId: req.user._id,
       courseId: quiz.courseId,
-      tenantId: req.tenant._id,
+      tenantId: req.tenantId,
       status: { $in: ["ACTIVE", "COMPLETED"] },
     });
     if (!enrollment) {
@@ -226,7 +226,7 @@ export async function submitQuiz(req, res, next) {
       userId: req.user._id,
       courseId: quiz.courseId,
       lessonId: quiz.lessonId,
-      tenantId: req.tenant._id,
+      tenantId: req.tenantId,
       answers: graded,
       score,
       maxScore,
@@ -237,13 +237,13 @@ export async function submitQuiz(req, res, next) {
     let progress = await UserProgress.findOne({
       userId: req.user._id,
       courseId: quiz.courseId,
-      tenantId: req.tenant._id,
+      tenantId: req.tenantId,
     });
     if (!progress) {
       progress = await UserProgress.create({
         userId: req.user._id,
         courseId: quiz.courseId,
-        tenantId: req.tenant._id,
+        tenantId: req.tenantId,
         completedLessons: [],
         quizScores: [],
         assignmentScores: [],
@@ -301,7 +301,7 @@ export async function getMyAttempts(req, res, next) {
   try {
     const filter = {
       quizId: req.params.id,
-      tenantId: req.tenant._id,
+      tenantId: req.tenantId,
     };
 
     if (req.user.role === "STUDENT") {
@@ -320,7 +320,7 @@ export async function getMyAttempts(req, res, next) {
 
 export async function publishQuiz(req, res, next) {
   try {
-    const quiz = await Quiz.findOne({ _id: req.params.id, tenantId: req.tenant._id });
+    const quiz = await Quiz.findOne({ _id: req.params.id, tenantId: req.tenantId });
     if (!quiz) {
       return res.status(404).send(prepareResponseMsg({}, false, "Quiz not found", 404));
     }

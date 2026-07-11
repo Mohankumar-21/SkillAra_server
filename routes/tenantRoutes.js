@@ -1,8 +1,7 @@
 import express from "express";
 import { createTenant, listTenants, getTenant, updateTenant, updateTenantStatus, resolveTenant, checkTenantSubdomain } from "../controllers/tenantController.js";
 import { body, validationResult } from "express-validator";
-import { prepareResponseMsg } from "../utils/helper.js";
-import { getMessage } from "../core/message.js";
+import { prepareResponseMsg, sendError } from "../utils/helper.js";
 import { requireDb } from "../utils/db-state.js";
 import { requireAuth, requireRole } from "../middlewares/auth.js";
 const tenantRouter = express.Router();
@@ -45,8 +44,7 @@ tenantRouter.post(
     const errors = validationResult(req);
     if (errors.isEmpty()) return next();
 
-    const resp = prepareResponseMsg({ errors: errors.array() }, false, getMessage(150), 400);
-    return res.status(400).send(resp);
+    return sendError(res, "GENERAL_VALIDATION_FAILED", 400, { errors: errors.array() });
   },
   createTenant
 ); // POST /tenants
@@ -58,7 +56,7 @@ tenantRouter.get(
   requireRole("SUPER_ADMIN"),
   (req, res, next) => {
     if (!/^[0-9a-fA-F]{24}$/.test(req.params.id)) {
-      return res.status(400).send(prepareResponseMsg({}, false, "Invalid tenant id", 400));
+      return sendError(res, "TENANT_INVALID_ID", 400);
     }
     return next();
   },
@@ -72,7 +70,7 @@ tenantRouter.patch(
   requireRole("SUPER_ADMIN"),
   (req, res, next) => {
     if (!/^[0-9a-fA-F]{24}$/.test(req.params.id)) {
-      return res.status(400).send(prepareResponseMsg({}, false, "Invalid tenant id", 400));
+      return sendError(res, "TENANT_INVALID_ID", 400);
     }
     return next();
   },
@@ -80,7 +78,7 @@ tenantRouter.patch(
   (req, res, next) => {
     const errors = validationResult(req);
     if (errors.isEmpty()) return next();
-    return res.status(400).send(prepareResponseMsg({ errors: errors.array() }, false, getMessage(150), 400));
+    return sendError(res, "GENERAL_VALIDATION_FAILED", 400, { errors: errors.array() });
   },
   updateTenantStatus
 );
@@ -92,7 +90,7 @@ tenantRouter.patch(
   requireRole("SUPER_ADMIN"),
   (req, res, next) => {
     if (!/^[0-9a-fA-F]{24}$/.test(req.params.id)) {
-      return res.status(400).send(prepareResponseMsg({}, false, "Invalid tenant id", 400));
+      return sendError(res, "TENANT_INVALID_ID", 400);
     }
     return next();
   },
@@ -106,7 +104,7 @@ tenantRouter.patch(
   (req, res, next) => {
     const errors = validationResult(req);
     if (errors.isEmpty()) return next();
-    return res.status(400).send(prepareResponseMsg({ errors: errors.array() }, false, getMessage(150), 400));
+    return sendError(res, "GENERAL_VALIDATION_FAILED", 400, { errors: errors.array() });
   },
   updateTenant
 );

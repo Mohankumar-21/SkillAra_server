@@ -1,81 +1,106 @@
 import mongoose from "mongoose";
+import embeddedRoleSchema from "./embeddedRole.js";
+import embeddedLookupSchema from "./embeddedLookup.js";
+
+export const TENANT_STATUSES = ["active", "suspended"];
+export const SUBSCRIPTION_STATUSES = ["ACTIVE", "TRIAL", "EXPIRED"];
+
+const brandingSchema = new mongoose.Schema(
+  {
+    welcome_message: { type: String, default: "" },
+    primary_color: { type: String, default: "#4F46E5" },
+    secondary_color: { type: String, default: "#7C3AED" },
+  },
+  { _id: false }
+);
+
 const tenantSchema = new mongoose.Schema(
   {
-    tenant_name: {
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    subdomain: {
       type: String,
       required: true,
       unique: true,
+      lowercase: true,
+      trim: true,
+      index: true,
     },
     domain: {
       type: String,
-      required: true,
-      unique: true,
-    },
-    sub_domain: {
-      type: String,
-      required: true,
-      unique: true,
+      trim: true,
+      default: "",
     },
     email: {
       type: String,
-      required: true,
-      unique: true,
+      lowercase: true,
+      trim: true,
+      default: "",
     },
-    status: {
-      type: Boolean,
-      default: true,
+    phone: { type: String, trim: true, default: "" },
+    /** References SuperAdmin.organizationTypes[]._id on the primary platform catalog admin. */
+    orgTypeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      index: true,
     },
-    logo: {
-      type: Object,
-      default: {
-        status: false,
-        mime_type: "",
-        image_name: "no-data",
-        image_blob: "",
-      },
-    },
-    branding: {
-      welcome_message: { type: String, default: "", maxlength: 250 },
-      primary_color: { type: String, default: "#4F46E5" },
-      secondary_color: { type: String, default: "#7C3AED" },
-    },
-    user_count: {
-      type: Number,
-      default: 0,
+    industry: { type: String, trim: true, default: "" },
+    website: { type: String, trim: true, default: "" },
+    country: { type: String, trim: true, default: "" },
+    timezone: { type: String, trim: true, default: "" },
+    currency: { type: String, trim: true, default: "" },
+    logo: { type: mongoose.Schema.Types.Mixed, default: null },
+    branding: { type: brandingSchema, default: () => ({}) },
+    plan: {
+      type: String,
+      default: "trial",
+      trim: true,
     },
     planId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Plan",
       default: null,
       index: true,
     },
     subscriptionStatus: {
       type: String,
-      enum: ["ACTIVE", "EXPIRED", "TRIAL"],
+      enum: SUBSCRIPTION_STATUSES,
       default: "TRIAL",
+    },
+    subscriptionStartDate: { type: Date, default: null },
+    subscriptionEndDate: { type: Date, default: null },
+    user_count: { type: Number, default: 1, min: 0 },
+    status: {
+      type: String,
+      enum: TENANT_STATUSES,
+      default: "active",
       index: true,
     },
-    subscriptionStartDate: {
-      type: Date,
-      default: null,
+    /** Tenant-scoped roles and permissions (embedded). User.roleId references roles[]._id */
+    roles: {
+      type: [embeddedRoleSchema],
+      default: () => [],
     },
-    subscriptionEndDate: {
-      type: Date,
-      default: null,
+    /** User.departmentId references departments[]._id */
+    departments: {
+      type: [embeddedLookupSchema],
+      default: () => [],
     },
-    created_by: {
-      type: String,
-      default: "system", // or "admin"
-    },
-    updated_by: {
-      type: String,
-      default: "system",
+    /** User.designationId references designations[]._id */
+    designations: {
+      type: [embeddedLookupSchema],
+      default: () => [],
     },
   },
   {
-    timestamps: { createdAt: "created_on", updatedAt: "updated_on" },
+    timestamps: { createdAt: true, updatedAt: true },
     collection: "Tenant",
   }
 );
+
+tenantSchema.index({ email: 1 }, { sparse: true });
+
 const Tenant = mongoose.model("Tenant", tenantSchema);
 export default Tenant;

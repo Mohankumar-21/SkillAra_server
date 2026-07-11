@@ -3,35 +3,50 @@ import OwnershipTransferRequest, { PREVIOUS_OWNER_ROLE } from "../models/Ownersh
 import User from "../models/User.js";
 import Tenant from "../models/Tenant.js";
 import Session from "../models/Session.js";
-import { prepareResponseMsg } from "../utils/helper.js";
-import { toPublicUser } from "../utils/user.js";
+import { prepareResponseMsg, sendError } from "../utils/helper.js";
+import { toPublicUser, isTenantAdminUser } from "../utils/user.js";
+import { getTenantRoleBySlug } from "../services/roleService.js";
 import { auditFromRequest } from "../services/auditService.js";
+import { normalizeTenantForApi } from "../utils/tenantMapper.js";
 
-function isEligibleOwnershipTarget(user) {
+function normalizePopulatedTenant(tenantDoc) {
+  if (!tenantDoc || typeof tenantDoc !== "object") return tenantDoc;
+  return normalizeTenantForApi(tenantDoc);
+}
+
+async function isEligibleOwnershipTarget(user, tenantId) {
   if (!user) return false;
-  return (
-    user.role === "ORG_ADMIN" &&
-    user.status === "ACTIVE" &&
-    user.invitationStatus === "ACCEPTED"
-  );
+  const orgAdminRole = await getTenantRoleBySlug(tenantId, "org-admin");
+  if (!orgAdminRole) return false;
+  const status = String(user.status || "").toLowerCase();
+  return String(user.roleId) === String(orgAdminRole._id) && status === "active";
 }
 
 export async function listEligibleOwnershipTargets(req, res, next) {
   try {
-    if (req.user.role !== "TENANT_ADMIN") {
-      return res.status(403).send(prepareResponseMsg({}, false, "Forbidden", 403));
+    if (!isTenantAdminUser(req.user)) {
+      return sendError(res, "GENERAL_FORBIDDEN", 403);
+    }
+
+    const orgAdminRole = await getTenantRoleBySlug(req.tenantId, "org-admin");
+    if (!orgAdminRole) {
+      return res.status(200).send(
+        prepareResponseMsg({ users: [] }, true, "Eligible ownership targets fetched", 200)
+      );
     }
 
     const users = await User.find({
-      tenantId: req.tenant._id,
-      role: "ORG_ADMIN",
-      status: "ACTIVE",
-      invitationStatus: "ACCEPTED",
+      tenantId: req.tenantId,
+      roleId: orgAdminRole._id,
+      status: "active",
     }).sort({ name: 1 });
+
+    const tenant = await Tenant.findById(req.tenantId).select("roles");
+    const roleMap = new Map((tenant?.roles || []).map((r) => [String(r._id), r]));
 
     return res.status(200).send(
       prepareResponseMsg(
-        { users: users.map(toPublicUser) },
+        { users: users.map((u) => toPublicUser(u, { roleMap })) },
         true,
         "Eligible ownership targets fetched",
         200
@@ -73,52 +88,34 @@ async function revokeUserSessions(userIds, reason) {
 
 export async function createOwnershipTransferRequest(req, res, next) {
   try {
-    if (req.user.role !== "TENANT_ADMIN") {
-      return res
-        .status(403)
-        .send(prepareResponseMsg({}, false, "Only the organization owner can request ownership transfer", 403));
+    if (!isTenantAdminUser(req.user)) {
+      return sendError(res, "OWNERSHIP_FORBIDDEN", 403);
     }
 
     const { targetUserId, reason = "" } = req.body;
 
     if (String(targetUserId) === String(req.user._id)) {
-      return res.status(400).send(prepareResponseMsg({}, false, "Cannot transfer ownership to yourself", 400));
+      return sendError(res, "OWNERSHIP_SELF", 400);
     }
 
     const pending = await OwnershipTransferRequest.findOne({
-      tenantId: req.tenant._id,
+      tenantId: req.tenantId,
       status: "PENDING",
     });
     if (pending) {
-      return res
-        .status(409)
-        .send(
-          prepareResponseMsg(
-            {},
-            false,
-            "A pending ownership transfer request already exists for this organization",
-            409
-          )
-        );
+      return sendError(res, "OWNERSHIP_PENDING_EXISTS", 409);
     }
 
     const target = await User.findOne({
       _id: targetUserId,
-      tenantId: req.tenant._id,
+      tenantId: req.tenantId,
     });
-    if (!isEligibleOwnershipTarget(target)) {
-      return res.status(404).send(
-        prepareResponseMsg(
-          {},
-          false,
-          "Only active Organization Admins who have accepted their invitation can become owner",
-          404
-        )
-      );
+    if (!target || !(await isEligibleOwnershipTarget(target, req.tenantId))) {
+      return sendError(res, "OWNERSHIP_TARGET_INELIGIBLE", 404);
     }
 
     const request = await OwnershipTransferRequest.create({
-      tenantId: req.tenant._id,
+      tenantId: req.tenantId,
       requestedBy: req.user._id,
       targetUserId: target._id,
       previousOwnerNewRole: PREVIOUS_OWNER_ROLE,
@@ -141,13 +138,13 @@ export async function createOwnershipTransferRequest(req, res, next) {
     const populated = await OwnershipTransferRequest.findById(request._id)
       .populate("requestedBy", "name email")
       .populate("targetUserId", "name email role")
-      .populate("tenantId", "tenant_name sub_domain");
+      .populate("tenantId", "name subdomain");
 
     return res.status(201).send(
       prepareResponseMsg(
         {
           request: toPublicRequest(populated, {
-            tenant: populated.tenantId,
+            tenant: normalizePopulatedTenant(populated.tenantId),
             currentOwner: toPublicUser(populated.requestedBy),
             targetUser: toPublicUser(populated.targetUserId),
           }),
@@ -164,11 +161,11 @@ export async function createOwnershipTransferRequest(req, res, next) {
 
 export async function listMyOwnershipTransferRequests(req, res, next) {
   try {
-    if (req.user.role !== "TENANT_ADMIN") {
-      return res.status(403).send(prepareResponseMsg({}, false, "Forbidden", 403));
+    if (!isTenantAdminUser(req.user)) {
+      return sendError(res, "GENERAL_FORBIDDEN", 403);
     }
 
-    const requests = await OwnershipTransferRequest.find({ tenantId: req.tenant._id })
+    const requests = await OwnershipTransferRequest.find({ tenantId: req.tenantId })
       .sort({ created_on: -1 })
       .populate("requestedBy", "name email")
       .populate("targetUserId", "name email role")
@@ -200,15 +197,13 @@ export async function cancelOwnershipTransferRequest(req, res, next) {
   try {
     const request = await OwnershipTransferRequest.findOne({
       _id: req.params.id,
-      tenantId: req.tenant._id,
+      tenantId: req.tenantId,
       requestedBy: req.user._id,
       status: "PENDING",
     });
 
     if (!request) {
-      return res
-        .status(404)
-        .send(prepareResponseMsg({}, false, "Pending request not found", 404));
+      return sendError(res, "OWNERSHIP_REQUEST_NOT_FOUND", 404);
     }
 
     request.status = "CANCELLED";
@@ -237,7 +232,7 @@ export async function listOwnershipTransferRequests(req, res, next) {
 
     const requests = await OwnershipTransferRequest.find(filter)
       .sort({ created_on: -1 })
-      .populate("tenantId", "tenant_name sub_domain email status")
+      .populate("tenantId", "name subdomain email status")
       .populate("requestedBy", "name email role")
       .populate("targetUserId", "name email role")
       .populate("reviewedBy", "name email")
@@ -248,7 +243,7 @@ export async function listOwnershipTransferRequests(req, res, next) {
         {
           requests: requests.map((r) =>
             toPublicRequest(r, {
-              tenant: r.tenantId,
+              tenant: normalizePopulatedTenant(r.tenantId),
               currentOwner: toPublicUser(r.requestedBy),
               targetUser: toPublicUser(r.targetUserId),
               reviewer: r.reviewedBy ? toPublicUser(r.reviewedBy) : null,
@@ -273,12 +268,15 @@ export async function approveOwnershipTransferRequest(req, res, next) {
     const request = await OwnershipTransferRequest.findById(req.params.id).session(session);
     if (!request || request.status !== "PENDING") {
       await session.endSession();
-      return res
-        .status(404)
-        .send(prepareResponseMsg({}, false, "Pending request not found", 404));
+      return sendError(res, "OWNERSHIP_REQUEST_NOT_FOUND", 404);
     }
 
-    const appliedRole = PREVIOUS_OWNER_ROLE;
+    const ownerRole = await getTenantRoleBySlug(request.tenantId, "organization-owner");
+    const orgAdminRole = await getTenantRoleBySlug(request.tenantId, "org-admin");
+    if (!ownerRole || !orgAdminRole) {
+      await session.endSession();
+      return sendError(res, "ROLE_INVALID", 500);
+    }
 
     const [currentOwner, target, tenant] = await Promise.all([
       User.findById(request.requestedBy).session(session),
@@ -288,49 +286,46 @@ export async function approveOwnershipTransferRequest(req, res, next) {
 
     if (!tenant || tenant.status === false) {
       await session.endSession();
-      return res
-        .status(400)
-        .send(prepareResponseMsg({}, false, "Organization is inactive", 400));
+      return sendError(res, "OWNERSHIP_ORG_INACTIVE", 400);
     }
 
-    if (!currentOwner || currentOwner.role !== "TENANT_ADMIN") {
+    if (!currentOwner || !isTenantAdminUser(currentOwner)) {
       await session.endSession();
-      return res
-        .status(400)
-        .send(prepareResponseMsg({}, false, "Current owner is no longer valid", 400));
+      return sendError(res, "OWNERSHIP_OWNER_INVALID", 400);
     }
 
     if (!target || String(target.tenantId) !== String(request.tenantId)) {
       await session.endSession();
-      return res
-        .status(400)
-        .send(prepareResponseMsg({}, false, "Target user is no longer eligible", 400));
+      return sendError(res, "OWNERSHIP_TARGET_INELIGIBLE", 400);
     }
 
-    if (!isEligibleOwnershipTarget(target)) {
+    if (!(await isEligibleOwnershipTarget(target, request.tenantId))) {
       await session.endSession();
-      return res
-        .status(400)
-        .send(
-          prepareResponseMsg(
-            {},
-            false,
-            "Target must be an active Organization Admin with accepted invitation",
-            400
-          )
-        );
+      return sendError(res, "OWNERSHIP_TARGET_INVALID", 400);
     }
 
-    const runApproval = async (session) => {
-      const opts = session ? { session } : {};
+    const runApproval = async (txSession) => {
+      const opts = txSession ? { session: txSession } : {};
       await User.updateOne(
         { _id: currentOwner._id },
-        { $set: { role: appliedRole, status: "ACTIVE", invitationStatus: "ACCEPTED" } },
+        {
+          $set: {
+            roleId: orgAdminRole._id,
+            isTenantAdmin: false,
+            status: "active",
+          },
+        },
         opts
       );
       await User.updateOne(
         { _id: target._id },
-        { $set: { role: "TENANT_ADMIN", status: "ACTIVE", invitationStatus: "ACCEPTED" } },
+        {
+          $set: {
+            roleId: ownerRole._id,
+            isTenantAdmin: true,
+            status: "active",
+          },
+        },
         opts
       );
 
@@ -338,7 +333,7 @@ export async function approveOwnershipTransferRequest(req, res, next) {
       request.reviewedBy = req.user._id;
       request.reviewedAt = new Date();
       request.reviewNote = reviewNote.trim();
-      request.appliedPreviousOwnerNewRole = appliedRole;
+      request.appliedPreviousOwnerNewRole = PREVIOUS_OWNER_ROLE;
       await request.save(opts);
     };
 
@@ -361,6 +356,9 @@ export async function approveOwnershipTransferRequest(req, res, next) {
       User.findById(target._id),
     ]);
 
+    const tenantDoc = await Tenant.findById(request.tenantId).select("roles");
+    const roleMap = new Map((tenantDoc?.roles || []).map((r) => [String(r._id), r]));
+
     await auditFromRequest(req, {
       tenantId: request.tenantId,
       action: "ownership.transfer.approved",
@@ -371,7 +369,7 @@ export async function approveOwnershipTransferRequest(req, res, next) {
         previousOwnerEmail: previousOwner.email,
         newOwnerId: newOwner._id,
         newOwnerEmail: newOwner.email,
-        previousOwnerNewRole: appliedRole,
+        previousOwnerNewRole: PREVIOUS_OWNER_ROLE,
       },
     });
 
@@ -379,8 +377,8 @@ export async function approveOwnershipTransferRequest(req, res, next) {
       prepareResponseMsg(
         {
           request: toPublicRequest(request),
-          previousOwner: toPublicUser(previousOwner),
-          newOwner: toPublicUser(newOwner),
+          previousOwner: toPublicUser(previousOwner, { roleMap }),
+          newOwner: toPublicUser(newOwner, { roleMap }),
         },
         true,
         "Ownership transfer approved and applied",
@@ -397,9 +395,7 @@ export async function rejectOwnershipTransferRequest(req, res, next) {
   try {
     const { reviewNote = "" } = req.body;
     if (!reviewNote.trim()) {
-      return res
-        .status(400)
-        .send(prepareResponseMsg({}, false, "Rejection reason is required", 400));
+      return sendError(res, "OWNERSHIP_REJECT_REASON_REQUIRED", 400);
     }
 
     const request = await OwnershipTransferRequest.findOne({
@@ -408,9 +404,7 @@ export async function rejectOwnershipTransferRequest(req, res, next) {
     });
 
     if (!request) {
-      return res
-        .status(404)
-        .send(prepareResponseMsg({}, false, "Pending request not found", 404));
+      return sendError(res, "OWNERSHIP_REQUEST_NOT_FOUND", 404);
     }
 
     request.status = "REJECTED";

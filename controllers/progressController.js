@@ -18,7 +18,7 @@ export async function getCourseProgress(req, res, next) {
   try {
     const { courseId } = req.params;
     const userId = req.user._id;
-    const tenantId = req.tenant._id;
+    const tenantId = req.tenantId;
 
     const enrollment = await requireEnrollment(userId, courseId, tenantId);
     if (!enrollment && req.user.role === "STUDENT") {
@@ -65,12 +65,12 @@ export async function getMyProgress(req, res, next) {
   try {
     const progressList = await UserProgress.find({
       userId: req.user._id,
-      tenantId: req.tenant._id,
+      tenantId: req.tenantId,
     }).sort({ updatedAt: -1 });
 
     const enrollments = await Enrollment.find({
       userId: req.user._id,
-      tenantId: req.tenant._id,
+      tenantId: req.tenantId,
       status: { $in: ["ACTIVE", "COMPLETED"] },
     }).populate("courseId", "title thumbnail");
 
@@ -106,7 +106,7 @@ export async function markLessonComplete(req, res, next) {
   try {
     const { lessonId } = req.params;
     const userId = req.user._id;
-    const tenantId = req.tenant._id;
+    const tenantId = req.tenantId;
 
     const lesson = await Lesson.findById(lessonId);
     if (!lesson) {

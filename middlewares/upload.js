@@ -2,7 +2,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import { prepareResponseMsg } from "../utils/helper.js";
+import { sendError } from "../utils/helper.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,7 +35,7 @@ function fileFilter(_req, file, cb) {
   if (ALLOWED_MIMES.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error("File type not allowed"));
+    cb(new Error("UPLOAD_FILE_TYPE_INVALID"));
   }
 }
 
@@ -47,12 +47,16 @@ export const upload = multer({
 
 export function handleUploadError(err, req, res, next) {
   if (err instanceof multer.MulterError) {
-    return res
-      .status(400)
-      .send(prepareResponseMsg({}, false, err.message, 400));
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return sendError(res, "UPLOAD_FILE_TOO_LARGE", 400);
+    }
+    return sendError(res, "GENERAL_VALIDATION_FAILED", 400);
   }
   if (err) {
-    return res.status(400).send(prepareResponseMsg({}, false, err.message, 400));
+    if (err.message === "UPLOAD_FILE_TYPE_INVALID") {
+      return sendError(res, "UPLOAD_FILE_TYPE_INVALID", 400);
+    }
+    return sendError(res, "GENERAL_UNKNOWN", 400);
   }
   return next();
 }

@@ -24,7 +24,7 @@ export async function writeAuditLog({
 
 export function auditFromRequest(req, payload) {
   return writeAuditLog({
-    tenantId: req.tenant?._id || req.user?.tenantId || null,
+    tenantId: req.user?.tenantId ?? req.tenantId ?? req.resolvedTenant?._id ?? req.tenant?._id ?? null,
     actorId: req.user?._id || null,
     actorRole: req.user?.role || "",
     ip: req.ip || "",

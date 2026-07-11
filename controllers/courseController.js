@@ -16,7 +16,7 @@ async function getOwnedCourse(courseId, tenantId, user) {
 export async function listCourses(req, res, next) {
   try {
     const { status, search, tag } = req.query;
-    const filter = req.user?.role === "SUPER_ADMIN" ? {} : { tenantId: req.tenant._id };
+    const filter = req.user?.role === "SUPER_ADMIN" ? {} : { tenantId: req.tenantId };
 
     if (status) filter.status = status;
     if (tag) filter.tags = tag;
@@ -47,7 +47,7 @@ export async function createCourse(req, res, next) {
   try {
     const { title, description, thumbnail, price, tags, status } = req.body;
     const course = await Course.create({
-      tenantId: req.tenant._id,
+      tenantId: req.tenantId,
       title,
       description,
       instructorId: req.user._id,
@@ -70,7 +70,7 @@ export async function getCourse(req, res, next) {
   try {
     const filter = { _id: req.params.id };
     if (req.user?.role !== "SUPER_ADMIN") {
-      filter.tenantId = req.tenant._id;
+      filter.tenantId = req.tenantId;
       if (!req.user || req.user.role === "STUDENT") filter.status = "PUBLISHED";
     }
 
@@ -93,7 +93,7 @@ export async function getCourse(req, res, next) {
 
 export async function updateCourse(req, res, next) {
   try {
-    const course = await getOwnedCourse(req.params.id, req.tenant._id, req.user);
+    const course = await getOwnedCourse(req.params.id, req.tenantId, req.user);
     if (course === "forbidden") {
       return res.status(403).send(prepareResponseMsg({}, false, "Forbidden", 403));
     }
@@ -119,7 +119,7 @@ export async function updateCourse(req, res, next) {
 
 export async function deleteCourse(req, res, next) {
   try {
-    const course = await getOwnedCourse(req.params.id, req.tenant._id, req.user);
+    const course = await getOwnedCourse(req.params.id, req.tenantId, req.user);
     if (course === "forbidden") {
       return res.status(403).send(prepareResponseMsg({}, false, "Forbidden", 403));
     }
@@ -138,7 +138,7 @@ export async function deleteCourse(req, res, next) {
 
 export async function addModule(req, res, next) {
   try {
-    const course = await getOwnedCourse(req.params.id, req.tenant._id, req.user);
+    const course = await getOwnedCourse(req.params.id, req.tenantId, req.user);
     if (course === "forbidden") {
       return res.status(403).send(prepareResponseMsg({}, false, "Forbidden", 403));
     }
@@ -166,7 +166,7 @@ export async function updateModule(req, res, next) {
       return res.status(404).send(prepareResponseMsg({}, false, "Module not found", 404));
     }
 
-    const course = await getOwnedCourse(module.courseId, req.tenant._id, req.user);
+    const course = await getOwnedCourse(module.courseId, req.tenantId, req.user);
     if (course === "forbidden") {
       return res.status(403).send(prepareResponseMsg({}, false, "Forbidden", 403));
     }
@@ -195,7 +195,7 @@ export async function deleteModule(req, res, next) {
       return res.status(404).send(prepareResponseMsg({}, false, "Module not found", 404));
     }
 
-    const course = await getOwnedCourse(module.courseId, req.tenant._id, req.user);
+    const course = await getOwnedCourse(module.courseId, req.tenantId, req.user);
     if (course === "forbidden") {
       return res.status(403).send(prepareResponseMsg({}, false, "Forbidden", 403));
     }
@@ -222,7 +222,7 @@ export async function addLesson(req, res, next) {
       return res.status(404).send(prepareResponseMsg({}, false, "Module not found", 404));
     }
 
-    const course = await getOwnedCourse(module.courseId, req.tenant._id, req.user);
+    const course = await getOwnedCourse(module.courseId, req.tenantId, req.user);
     if (course === "forbidden") {
       return res.status(403).send(prepareResponseMsg({}, false, "Forbidden", 403));
     }
@@ -261,7 +261,7 @@ export async function updateLesson(req, res, next) {
     }
 
     const module = await Module.findById(lesson.moduleId);
-    const course = await getOwnedCourse(module.courseId, req.tenant._id, req.user);
+    const course = await getOwnedCourse(module.courseId, req.tenantId, req.user);
     if (course === "forbidden") {
       return res.status(403).send(prepareResponseMsg({}, false, "Forbidden", 403));
     }
@@ -301,7 +301,7 @@ export async function deleteLesson(req, res, next) {
     }
 
     const module = await Module.findById(lesson.moduleId);
-    const course = await getOwnedCourse(module.courseId, req.tenant._id, req.user);
+    const course = await getOwnedCourse(module.courseId, req.tenantId, req.user);
     if (course === "forbidden") {
       return res.status(403).send(prepareResponseMsg({}, false, "Forbidden", 403));
     }

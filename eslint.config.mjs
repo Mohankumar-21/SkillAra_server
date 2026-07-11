@@ -17,4 +17,12 @@ export default defineConfig([
       quotes: ["error", "double"],
     },
   },
+  /*
+   * Code-review checklist (tenant-scoped route files):
+   * - courseRoutes.js, userRoutes.js, enrollmentRoutes.js, progressRoutes.js,
+   *   quizRoutes.js, assignmentRoutes.js, aiRoutes.js, ownershipTransferRoutes.js
+   * All DB queries MUST filter by req.tenantId from scopeTenant middleware.
+   * Never trust tenant id from req.query / req.body / req.params.
+   * See middleware/tenantRouteChecklist.js
+   */
 ]);

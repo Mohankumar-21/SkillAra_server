@@ -1,21 +1,39 @@
-// errorHandler.js
 import logger from "../core/logger.js";
+
+import { getErrorMessage } from "./errorMessages.js";
+
 import { prepareResponseMsg } from "./helper.js";
+
+import { normalizeError } from "./appError.js";
+
 import httpStatus from "http-status";
+
+
+
 export const errorHandler = (err, req, res, next) => {
-  logger.error(err);
-  const { status, statusText } = err ?? {};
-
-  let statusCode = status || 400;
-  let message = statusText || "Something went wrong";
-
-  if (process.env.NODE_ENV === "production" && !err.isOperational) {
-    statusCode = httpStatus.INTERNAL_SERVER_ERROR;
-    message = httpStatus[httpStatus.INTERNAL_SERVER_ERROR];
+  if (process.env.NODE_ENV === "production") {
+    logger.error(err?.message || err);
+  } else {
+    logger.error(err);
   }
 
-  res.locals.errorMessage = message;
+  let { statusCode, errorKey, errorMessage, data } = normalizeError(err);
 
-  const resp = prepareResponseMsg({}, false, message, statusCode);
+  if (!err?.isOperational || statusCode >= 500) {
+    statusCode = statusCode >= 500 ? httpStatus.INTERNAL_SERVER_ERROR : statusCode;
+    if (statusCode >= 500) {
+      errorKey = errorKey === "DB_UNAVAILABLE" ? "DB_UNAVAILABLE" : "GENERAL_UNKNOWN";
+      errorMessage = getErrorMessage(errorKey);
+      data = {};
+    }
+  }
+
+  res.locals.errorMessage = errorMessage;
+
+  const resp = prepareResponseMsg(data, false, errorKey, statusCode);
+  resp.message.errorKey = errorKey || resp.message.errorKey;
+  resp.message.errorMessage = errorMessage;
+
   res.status(statusCode).send(resp);
 };
+
