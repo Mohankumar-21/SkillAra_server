@@ -9,6 +9,7 @@ import userRouter from "./userRoutes.js";
 import enrollmentRouter from "./enrollmentRoutes.js";
 import progressRouter from "./progressRoutes.js";
 import quizRouter from "./quizRoutes.js";
+import ownershipTransferRouter from "./ownershipTransferRoutes.js";
 const router = express.Router();
 
 router.use("/auth", authRouter);
@@ -21,6 +22,7 @@ router.use("/plans", planRouter);
 router.use("/courses", courseRouter);
 router.use("/ai", aiRouter);
 router.use("/assignments", assignmentRouter);
+router.use("/ownership-transfers", ownershipTransferRouter);
 
 export default router;
 

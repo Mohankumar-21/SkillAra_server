@@ -19,6 +19,7 @@ import { requireAuth } from "../middlewares/auth.js";
 import { requireDb } from "../utils/db-state.js";
 import { checkPlanLimits } from "../middlewares/checkPlanLimits.js";
 import { registerStudent, changePassword } from "../controllers/userController.js";
+import { toPublicUser } from "../utils/user.js";
 
 const router = express.Router();
 
@@ -191,7 +192,7 @@ router.post("/admin/login", requireDb, loginLimiter, async (req, res) => {
     .send(
       prepareResponseMsg(
         {
-          user: { id: user._id, email: user.email, role: user.role },
+          user: toPublicUser(user),
           accessToken,
           refreshToken,
         },
@@ -250,6 +251,20 @@ router.post("/tenant/login", requireDb, loginLimiter, async (req, res) => {
   const user = await User.findOne({ email, tenantId: req.tenant._id });
   if (!user) return res.status(401).send(prepareResponseMsg({}, false, "Invalid credentials", 401));
 
+  if (!["TENANT_ADMIN", "ORG_ADMIN"].includes(user.role)) {
+    return res
+      .status(403)
+      .send(prepareResponseMsg({}, false, "This account cannot access the organization admin panel", 403));
+  }
+
+  if (user.status === "DISABLED") {
+    return res.status(403).send(prepareResponseMsg({}, false, "Account is disabled", 403));
+  }
+
+  if (user.invitationStatus === "BLOCKED") {
+    return res.status(403).send(prepareResponseMsg({}, false, "Account is blocked", 403));
+  }
+
   if (user.lockUntil && user.lockUntil > new Date()) {
     return res.status(423).send(prepareResponseMsg({}, false, "Account temporarily locked", 423));
   }
@@ -277,6 +292,7 @@ router.post("/tenant/login", requireDb, loginLimiter, async (req, res) => {
         lastLoginAt: new Date(),
         lastLoginIp: req.ip,
         lastLoginUserAgent: req.get("user-agent") || "",
+        ...(user.invitationStatus === "PENDING" ? { invitationStatus: "ACCEPTED" } : {}),
       },
     }
   );
@@ -307,7 +323,7 @@ router.post("/tenant/login", requireDb, loginLimiter, async (req, res) => {
     .send(
       prepareResponseMsg(
         {
-          user: { id: user._id, email: user.email, role: user.role },
+          user: toPublicUser(user),
           accessToken,
           refreshToken,
         },
@@ -400,17 +416,7 @@ router.post("/logout-all", requireDb, requireAuth, async (req, res) => {
 
 router.get("/me", requireDb, requireAuth, async (req, res) => {
   return res.status(200).send(
-    prepareResponseMsg(
-      {
-        id: req.user._id,
-        email: req.user.email,
-        role: req.user.role,
-        tenantId: req.user.tenantId,
-      },
-      true,
-      "OK",
-      200
-    )
+    prepareResponseMsg(toPublicUser(req.user), true, "OK", 200)
   );
 });
 
