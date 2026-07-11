@@ -57,6 +57,10 @@ export async function resolveTenantFromRequest(req) {
   if (!subdomain) return { subdomain: null, tenant: null };
   if (!isDbReady()) return { subdomain, tenant: null };
 
-  const tenant = await Tenant.findOne({ sub_domain: subdomain });
+  const tenant = await Tenant.findOne({ subdomain });
+  if (!tenant) {
+    const legacy = await Tenant.findOne({ sub_domain: subdomain });
+    return { subdomain, tenant: legacy };
+  }
   return { subdomain, tenant };
 }

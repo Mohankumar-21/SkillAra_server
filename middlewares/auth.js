@@ -1,86 +1,50 @@
-import User from "../models/User.js";
-import { verifyAccessToken } from "../services/jwt.js";
+/**
+ * Backward-compatible auth exports.
+ * New code should import from ../middleware/authenticate.js and siblings directly.
+ */
+export {
+  authenticate,
+  optionalAuthenticate,
+  authenticateLegacy as requireAuth,
+  optionalAuthenticateLegacy as optionalAuth,
+} from "../middleware/authenticate.js";
+export { requireRole } from "../middleware/requireRole.js";
+export { requireTenantUser } from "../middleware/requireTenantUser.js";
+export { requireSuperadmin } from "../middleware/requireSuperadmin.js";
+export { scopeTenant } from "../middleware/scopeTenant.js";
+import { sendError } from "../utils/helper.js";
+import { getRequestTenantId } from "../utils/requestTenant.js";
 
-export async function requireAuth(req, res, next) {
-  try {
-    const header = req.headers.authorization || "";
-    const bearer = header.startsWith("Bearer ") ? header.slice(7) : null;
-    const cookieToken = req.cookies?.access_token || null;
-    const token = bearer || cookieToken;
-
-    if (!token) {
-      return res
-        .status(401)
-        .send({ status: false, data: {}, message: { errorMessage: "Unauthorized", code: 401 } });
-    }
-
-    const decoded = verifyAccessToken(token);
-    const user = await User.findById(decoded.sub);
-    if (!user || user.status !== "ACTIVE") {
-      return res
-        .status(401)
-        .send({ status: false, data: {}, message: { errorMessage: "Unauthorized", code: 401 } });
-    }
-
-    req.user = user;
-    return next();
-  } catch (err) {
-    return res
-      .status(401)
-      .send({ status: false, data: {}, message: { errorMessage: "Unauthorized", code: 401 } });
-  }
-}
-
-export function requireRole(...roles) {
-  return (req, res, next) => {
-    const role = req.user?.role;
-    if (!role || !roles.includes(role)) {
-      return res
-        .status(403)
-        .send({ status: false, data: {}, message: { errorMessage: "Forbidden", code: 403 } });
-    }
-    return next();
-  };
-}
-
-export async function optionalAuth(req, res, next) {
-  try {
-    const header = req.headers.authorization || "";
-    const bearer = header.startsWith("Bearer ") ? header.slice(7) : null;
-    const cookieToken = req.cookies?.access_token || null;
-    const token = bearer || cookieToken;
-
-    if (token) {
-      const decoded = verifyAccessToken(token);
-      const user = await User.findById(decoded.sub);
-      if (user && user.status === "ACTIVE") {
-        req.user = user;
-      }
-    }
-    return next();
-  } catch {
-    return next();
-  }
-}
-
+/**
+ * Ensures req.tenantId is set from the JWT tenant _id when authenticated.
+ * Subdomain resolution (req.tenant) is only used for unauthenticated entry points.
+ * New tenant-scoped routes should use authenticate + scopeTenant.
+ */
 export function requireTenant(req, res, next) {
-  // SUPER_ADMIN bypasses tenant context
-  if (req.user?.role === "SUPER_ADMIN") return next();
-
-  const tenant = req.tenant;
-  if (!tenant) {
-    return res.status(400).send({
-      status: false,
-      data: {},
-      message: { errorMessage: "Tenant context required", code: 400 },
-    });
+  if (req.user?.type === "superadmin" || req.user?.role === "SUPER_ADMIN") {
+    return next();
   }
 
-  if (req.user && (!req.user.tenantId || String(req.user.tenantId) !== String(tenant._id))) {
-    return res
-      .status(403)
-      .send({ status: false, data: {}, message: { errorMessage: "Forbidden", code: 403 } });
+  const tokenTenantId =
+    req.user?.type === "tenant_user"
+      ? req.user.tenantId
+      : req.user?.tenantId != null
+        ? String(req.user.tenantId)
+        : null;
+
+  if (tokenTenantId) {
+    req.tenantId = tokenTenantId;
+    if (req.tenant && String(req.tenant._id) !== tokenTenantId) {
+      return sendError(res, "GENERAL_FORBIDDEN", 403);
+    }
+    return next();
   }
 
+  const tenantId = getRequestTenantId(req);
+  if (!tenantId) {
+    return sendError(res, "AUTH_TENANT_REQUIRED", 400);
+  }
+
+  req.tenantId = tenantId;
   return next();
 }

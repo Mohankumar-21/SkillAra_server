@@ -1,42 +1,74 @@
 import User from "../models/User.js";
 import Tenant from "../models/Tenant.js";
 import { hashPassword, verifyPassword } from "../services/password.js";
-import { prepareResponseMsg } from "../utils/helper.js";
-import { toPublicUser } from "../utils/user.js";
+import { prepareResponseMsg, sendError } from "../utils/helper.js";
+import {
+  toPublicUsers,
+  isTenantAdminUser,
+  isOrgAdminRole,
+  resolveTenantAdminActor,
+  employeeUserFilter,
+  applyUserProfileFields,
+} from "../utils/user.js";
+import {
+  invitationStatusToDb,
+} from "../utils/userRoleMap.js";
+import {
+  isAssignableTenantRole,
+  getTenantRoleById,
+} from "../services/roleService.js";
+import { writeAuditLog } from "../services/auditLog.js";
+import { normalizeStatusForDb } from "../utils/userRoleMap.js";
+import logger from "../core/logger.js";
 
 async function syncTenantUserCount(tenantId) {
-  const count = await User.countDocuments({ tenantId, status: "ACTIVE" });
+  const count = await User.countDocuments({ tenantId, status: "active" });
   await Tenant.updateOne({ _id: tenantId }, { $set: { user_count: count } });
 }
 
-export async function registerStudent(req, res, next) {
-  try {
-    const { name, email, password } = req.body;
-    const tenant = req.tenant;
-
-    const existing = await User.findOne({ email, tenantId: tenant._id });
-    if (existing) {
-      return res.status(409).send(prepareResponseMsg({}, false, "Email already registered", 409));
-    }
-
-    const passwordHash = await hashPassword(password);
-    const user = await User.create({
-      tenantId: tenant._id,
-      name: name.trim(),
-      email,
-      passwordHash,
-      role: "STUDENT",
-      status: "ACTIVE",
-    });
-
-    await syncTenantUserCount(tenant._id);
-
-    return res
-      .status(201)
-      .send(prepareResponseMsg({ user: toPublicUser(user) }, true, "Registration successful", 201));
-  } catch (err) {
-    return next(err);
+async function resolveCreatableRole({ tenantId, roleId, actor }) {
+  if (!roleId) {
+    return { error: "ROLE_INVALID" };
   }
+
+  const roleDoc = await getTenantRoleById(tenantId, roleId);
+  if (!roleDoc || !isAssignableTenantRole(roleDoc)) {
+    return { error: "ROLE_INVALID" };
+  }
+
+  const { isOwner, user: actorUser } = await resolveTenantAdminActor(actor, tenantId);
+
+  if (isOrgAdminRole(roleDoc) && !isOwner) {
+    logger.warn("[user:role-assign] Org admin blocked", {
+      tenantId: String(tenantId),
+      actorId: String(actor?._id || actor?.id || ""),
+      actorEmail: actorUser?.email || actor?.email || "",
+      actorIsTenantAdmin: actorUser?.isTenantAdmin,
+      actorJwtRole: actor?.role || null,
+      resolvedIsOwner: isOwner,
+      targetRoleId: String(roleId),
+      targetRoleSlug: roleDoc.slug,
+      targetRoleName: roleDoc.name,
+    });
+    return { error: "USER_ORG_ADMIN_FORBIDDEN" };
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    logger.info("[user:role-assign] Role assignment allowed", {
+      tenantId: String(tenantId),
+      actorId: String(actor?._id || actor?.id || ""),
+      resolvedIsOwner: isOwner,
+      targetRoleSlug: roleDoc.slug,
+      targetRoleName: roleDoc.name,
+      isOrgAdminTarget: isOrgAdminRole(roleDoc),
+    });
+  }
+
+  return { roleDoc };
+}
+
+export async function registerStudent(req, res) {
+  return sendError(res, "AUTH_REGISTRATION_CLOSED", 403);
 }
 
 export async function changePassword(req, res, next) {
@@ -46,13 +78,14 @@ export async function changePassword(req, res, next) {
 
     const ok = await verifyPassword(currentPassword, user.passwordHash);
     if (!ok) {
-      return res
-        .status(401)
-        .send(prepareResponseMsg({}, false, "Current password is incorrect", 401));
+      return sendError(res, "AUTH_PASSWORD_INCORRECT", 401);
     }
 
     const passwordHash = await hashPassword(newPassword);
-    await User.updateOne({ _id: user._id }, { $set: { passwordHash } });
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { passwordHash, isDefaultPassword: false } }
+    );
 
     return res
       .status(200)
@@ -64,12 +97,19 @@ export async function changePassword(req, res, next) {
 
 export async function listUsers(req, res, next) {
   try {
-    const { role, status, page = 1, limit = 20, search } = req.query;
-    const tenantId = req.tenant._id;
+    const { status, page = 1, limit = 20, search, roleId, departmentId } = req.query;
+    const tenantId = req.tenantId;
 
-    const filter = { tenantId, role: { $ne: "TENANT_ADMIN" } };
-    if (role) filter.role = role;
-    if (status) filter.status = status;
+    const filter = { ...employeeUserFilter(tenantId) };
+    if (roleId && /^[0-9a-fA-F]{24}$/.test(String(roleId))) {
+      filter.roleId = roleId;
+    }
+    if (departmentId && /^[0-9a-fA-F]{24}$/.test(String(departmentId))) {
+      filter.departmentId = departmentId;
+    }
+    if (status) {
+      filter.status = normalizeStatusForDb(status);
+    }
     if (search) {
       filter.$or = [
         { name: { $regex: search, $options: "i" } },
@@ -82,13 +122,15 @@ export async function listUsers(req, res, next) {
     const skip = (pageNum - 1) * limitNum;
 
     const [users, totalCount] = await Promise.all([
-      User.find(filter).sort({ created_on: -1 }).skip(skip).limit(limitNum),
+      User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum),
       User.countDocuments(filter),
     ]);
 
+    const publicUsers = await toPublicUsers(users, tenantId);
+
     return res.status(200).send(
       prepareResponseMsg(
-        users.map(toPublicUser),
+        publicUsers,
         true,
         "Users fetched successfully",
         200,
@@ -103,43 +145,61 @@ export async function listUsers(req, res, next) {
 
 export async function createUser(req, res, next) {
   try {
-    const { name, email, password, role, invitationStatus } = req.body;
-    const tenantId = req.tenant._id;
+    const { name, email, password, roleId, invitationStatus, phone, employeeId, departmentId, designationId, profilePhoto } = req.body;
+    const tenantId = req.tenantId;
 
-    if (!["TUTOR", "STUDENT", "ORG_ADMIN"].includes(role)) {
-      return res
-        .status(400)
-        .send(prepareResponseMsg({}, false, "Role must be TUTOR, STUDENT, or ORG_ADMIN", 400));
+    const resolved = await resolveCreatableRole({ tenantId, roleId, actor: req.user });
+    if (resolved.error) {
+      if (resolved.error === "USER_ORG_ADMIN_FORBIDDEN") {
+        logger.warn("[user:create] Blocked org admin assignment", {
+          tenantId: String(tenantId),
+          actorId: String(req.user?._id || req.user?.id || ""),
+          actorJwtRole: req.user?.role || null,
+          roleId: String(roleId),
+        });
+      }
+      return sendError(res, resolved.error, resolved.error === "USER_ORG_ADMIN_FORBIDDEN" ? 403 : 400);
     }
-
-    if (role === "ORG_ADMIN" && req.user.role !== "TENANT_ADMIN") {
-      return res
-        .status(403)
-        .send(prepareResponseMsg({}, false, "Only the organization owner can create Organization Admins", 403));
-    }
+    const roleDoc = resolved.roleDoc;
 
     const existing = await User.findOne({ email, tenantId });
     if (existing) {
-      return res.status(409).send(prepareResponseMsg({}, false, "Email already exists", 409));
+      return sendError(res, "USER_EMAIL_EXISTS", 409);
     }
 
     const passwordHash = await hashPassword(password);
-    const inviteStatus = invitationStatus || "ACCEPTED";
+    const status = invitationStatusToDb(invitationStatus);
+
+    const profileFields = {};
+    const profileError = await applyUserProfileFields(profileFields, {
+      phone,
+      employeeId,
+      departmentId,
+      designationId,
+      profilePhoto,
+    }, tenantId);
+    if (profileError) {
+      return sendError(res, profileError, 400);
+    }
+
     const user = await User.create({
       tenantId,
       name: name.trim(),
       email,
       passwordHash,
-      role,
-      status: "ACTIVE",
-      invitationStatus: inviteStatus,
+      roleId: roleDoc._id,
+      status,
+      isTenantAdmin: false,
+      ...profileFields,
     });
 
     await syncTenantUserCount(tenantId);
 
+    const [publicUser] = await toPublicUsers([user], tenantId);
+
     return res
       .status(201)
-      .send(prepareResponseMsg({ user: toPublicUser(user) }, true, "User created successfully", 201));
+      .send(prepareResponseMsg({ user: publicUser }, true, "User created successfully", 201));
   } catch (err) {
     return next(err);
   }
@@ -147,14 +207,16 @@ export async function createUser(req, res, next) {
 
 export async function getUser(req, res, next) {
   try {
-    const user = await User.findOne({ _id: req.params.id, tenantId: req.tenant._id });
+    const user = await User.findOne({ _id: req.params.id, tenantId: req.tenantId });
     if (!user) {
-      return res.status(404).send(prepareResponseMsg({}, false, "User not found", 404));
+      return sendError(res, "USER_NOT_FOUND", 404);
     }
+
+    const [publicUser] = await toPublicUsers([user], req.tenantId);
 
     return res
       .status(200)
-      .send(prepareResponseMsg({ user: toPublicUser(user) }, true, "User fetched successfully", 200));
+      .send(prepareResponseMsg({ user: publicUser }, true, "User fetched successfully", 200));
   } catch (err) {
     return next(err);
   }
@@ -162,53 +224,74 @@ export async function getUser(req, res, next) {
 
 export async function updateUser(req, res, next) {
   try {
-    const target = await User.findOne({ _id: req.params.id, tenantId: req.tenant._id });
+    const target = await User.findOne({ _id: req.params.id, tenantId: req.tenantId });
     if (!target) {
-      return res.status(404).send(prepareResponseMsg({}, false, "User not found", 404));
+      return sendError(res, "USER_NOT_FOUND", 404);
     }
 
-    const isAdmin = req.user.role === "TENANT_ADMIN";
-    const isSelf = String(target._id) === String(req.user._id);
+    const isAdmin = isTenantAdminUser(req.user);
+    const isSelf = String(target._id) === String(req.user._id || req.user.id);
 
     if (!isAdmin && !isSelf) {
-      return res.status(403).send(prepareResponseMsg({}, false, "Forbidden", 403));
+      return sendError(res, "GENERAL_FORBIDDEN", 403);
     }
 
     const updates = {};
     if (req.body.name !== undefined) updates.name = req.body.name.trim();
 
-    if (isAdmin) {
-      if (req.body.role !== undefined) {
-        if (!["TUTOR", "STUDENT", "ORG_ADMIN"].includes(req.body.role)) {
-          return res
-            .status(400)
-            .send(prepareResponseMsg({}, false, "Role must be TUTOR, STUDENT, or ORG_ADMIN", 400));
-        }
-        if (req.body.role === "ORG_ADMIN" && req.user.role !== "TENANT_ADMIN") {
-          return res.status(403).send(prepareResponseMsg({}, false, "Forbidden", 403));
-        }
-        if (target.role === "TENANT_ADMIN") {
-          return res
-            .status(400)
-            .send(prepareResponseMsg({}, false, "Cannot change TENANT_ADMIN role", 400));
-        }
-        updates.role = req.body.role;
+    if (isAdmin && req.body.roleId !== undefined) {
+      const resolved = await resolveCreatableRole({
+        tenantId: req.tenantId,
+        roleId: req.body.roleId,
+        actor: req.user,
+      });
+      if (resolved.error) {
+        return sendError(res, resolved.error, resolved.error === "USER_ORG_ADMIN_FORBIDDEN" ? 403 : 400);
       }
+      if (isTenantAdminUser(target)) {
+        return sendError(res, "USER_OWNER_PROTECTED", 400);
+      }
+      updates.roleId = resolved.roleDoc._id;
+      updates.isTenantAdmin = false;
     }
 
     if (req.body.password) {
       if (!isAdmin && !isSelf) {
-        return res.status(403).send(prepareResponseMsg({}, false, "Forbidden", 403));
+        return sendError(res, "GENERAL_FORBIDDEN", 403);
       }
       updates.passwordHash = await hashPassword(req.body.password);
     }
 
+    if (isAdmin || isSelf) {
+      const profileError = await applyUserProfileFields(updates, req.body, req.tenantId);
+      if (profileError) {
+        return sendError(res, profileError, 400);
+      }
+    }
+
     const updated = await User.findByIdAndUpdate(target._id, { $set: updates }, { new: true });
+
+    if (updates.roleId) {
+      await writeAuditLog({
+        actorId: req.user._id || req.user.id,
+        actorType: "tenant_user",
+        action: "user.role_changed",
+        targetId: target._id,
+        tenantId: req.tenantId,
+        ip: req.ip,
+        metadata: {
+          fromRoleId: target.roleId ? String(target.roleId) : null,
+          toRoleId: updates.roleId ? String(updates.roleId) : null,
+        },
+      });
+    }
+
+    const [publicUser] = await toPublicUsers([updated], req.tenantId);
 
     return res
       .status(200)
       .send(
-        prepareResponseMsg({ user: toPublicUser(updated) }, true, "User updated successfully", 200)
+        prepareResponseMsg({ user: publicUser }, true, "User updated successfully", 200)
       );
   } catch (err) {
     return next(err);
@@ -218,41 +301,38 @@ export async function updateUser(req, res, next) {
 export async function updateUserStatus(req, res, next) {
   try {
     const { status } = req.body;
-    if (!["ACTIVE", "DISABLED"].includes(status)) {
-      return res
-        .status(400)
-        .send(prepareResponseMsg({}, false, "Status must be ACTIVE or DISABLED", 400));
+    const dbStatus = normalizeStatusForDb(status);
+    if (!["active", "disabled"].includes(dbStatus)) {
+      return sendError(res, "USER_STATUS_INVALID", 400);
     }
 
-    const target = await User.findOne({ _id: req.params.id, tenantId: req.tenant._id });
+    const target = await User.findOne({ _id: req.params.id, tenantId: req.tenantId });
     if (!target) {
-      return res.status(404).send(prepareResponseMsg({}, false, "User not found", 404));
+      return sendError(res, "USER_NOT_FOUND", 404);
     }
 
-    if (target.role === "TENANT_ADMIN") {
-      return res
-        .status(400)
-        .send(prepareResponseMsg({}, false, "Cannot disable TENANT_ADMIN", 400));
+    if (isTenantAdminUser(target)) {
+      return sendError(res, "USER_OWNER_PROTECTED", 400);
     }
 
-    if (String(target._id) === String(req.user._id)) {
-      return res
-        .status(400)
-        .send(prepareResponseMsg({}, false, "Cannot change your own status", 400));
+    if (String(target._id) === String(req.user._id || req.user.id)) {
+      return sendError(res, "USER_SELF_STATUS", 400);
     }
 
     const updated = await User.findByIdAndUpdate(
       target._id,
-      { $set: { status } },
+      { $set: { status: dbStatus } },
       { new: true }
     );
 
-    await syncTenantUserCount(req.tenant._id);
+    await syncTenantUserCount(req.tenantId);
+
+    const [publicUser] = await toPublicUsers([updated], req.tenantId);
 
     return res
       .status(200)
       .send(
-        prepareResponseMsg({ user: toPublicUser(updated) }, true, "User status updated", 200)
+        prepareResponseMsg({ user: publicUser }, true, "User status updated", 200)
       );
   } catch (err) {
     return next(err);
@@ -269,14 +349,16 @@ export async function updateMyProfile(req, res, next) {
     if (profilePhoto !== undefined) updates.profilePhoto = profilePhoto;
 
     if (Object.keys(updates).length === 0) {
-      return res.status(400).send(prepareResponseMsg({}, false, "No fields to update", 400));
+      return sendError(res, "USER_NO_FIELDS", 400);
     }
 
-    const updated = await User.findByIdAndUpdate(req.user._id, { $set: updates }, { new: true });
+    const updated = await User.findByIdAndUpdate(req.user._id || req.user.id, { $set: updates }, { new: true });
+
+    const [publicUser] = await toPublicUsers([updated], req.tenantId);
 
     return res
       .status(200)
-      .send(prepareResponseMsg({ user: toPublicUser(updated) }, true, "Profile updated successfully", 200));
+      .send(prepareResponseMsg({ user: publicUser }, true, "Profile updated successfully", 200));
   } catch (err) {
     return next(err);
   }
@@ -284,23 +366,31 @@ export async function updateMyProfile(req, res, next) {
 
 export async function deleteUser(req, res, next) {
   try {
-    const target = await User.findOne({ _id: req.params.id, tenantId: req.tenant._id });
+    const target = await User.findOne({ _id: req.params.id, tenantId: req.tenantId });
     if (!target) {
-      return res.status(404).send(prepareResponseMsg({}, false, "User not found", 404));
+      return sendError(res, "USER_NOT_FOUND", 404);
     }
 
-    if (target.role === "TENANT_ADMIN") {
-      return res
-        .status(400)
-        .send(prepareResponseMsg({}, false, "Cannot delete TENANT_ADMIN", 400));
+    if (isTenantAdminUser(target)) {
+      return sendError(res, "USER_OWNER_PROTECTED", 400);
     }
 
-    if (String(target._id) === String(req.user._id)) {
-      return res.status(400).send(prepareResponseMsg({}, false, "Cannot delete yourself", 400));
+    if (String(target._id) === String(req.user._id || req.user.id)) {
+      return sendError(res, "USER_SELF_DELETE", 400);
     }
 
-    await User.updateOne({ _id: target._id }, { $set: { status: "DISABLED" } });
-    await syncTenantUserCount(req.tenant._id);
+    await User.updateOne({ _id: target._id }, { $set: { status: "disabled" } });
+    await syncTenantUserCount(req.tenantId);
+
+    await writeAuditLog({
+      actorId: req.user._id || req.user.id,
+      actorType: "tenant_user",
+      action: "user.deleted",
+      targetId: target._id,
+      tenantId: req.tenantId,
+      ip: req.ip,
+      metadata: { email: target.email, roleId: target.roleId ? String(target.roleId) : null },
+    });
 
     return res
       .status(200)

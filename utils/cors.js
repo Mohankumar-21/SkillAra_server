@@ -20,12 +20,17 @@ export function corsOrigin(origin, callback) {
     .filter(Boolean);
 
   if (!origin) return callback(null, true);
-  if (list.length === 0) return callback(null, true);
-  if (list.includes(origin)) return callback(null, true);
 
-  if (process.env.NODE_ENV !== "production" && isDevLocalOrigin(origin)) {
-    return callback(null, true);
+  if (process.env.NODE_ENV === "production") {
+    if (list.length === 0) {
+      return callback(new Error("CORS_ORIGINS must be set in production"));
+    }
+    if (list.includes(origin)) return callback(null, true);
+    return callback(new Error("CORS blocked"));
   }
+
+  if (list.length > 0 && list.includes(origin)) return callback(null, true);
+  if (isDevLocalOrigin(origin)) return callback(null, true);
 
   return callback(new Error("CORS blocked"));
 }

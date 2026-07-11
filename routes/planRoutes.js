@@ -2,7 +2,8 @@ import express from "express";
 import { z } from "zod";
 
 import { createPlan, deactivatePlan, listPlans, updatePlan } from "../controllers/planController.js";
-import { prepareResponseMsg } from "../utils/helper.js";
+import { sendError } from "../utils/helper.js";
+import { validateBody } from "../utils/validate.js";
 import { requireDb } from "../utils/db-state.js";
 import { requireAuth, requireRole } from "../middlewares/auth.js";
 
@@ -36,22 +37,8 @@ const planUpdateSchema = planCreateSchema.partial().extend({
   isActive: planCreateSchema.shape.isActive.optional(),
 });
 
-function validateBody(schema) {
-  return (req, res, next) => {
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).send(
-        prepareResponseMsg(
-          { issues: parsed.error.issues },
-          false,
-          "Validation failed",
-          400
-        )
-      );
-    }
-    req.body = parsed.data;
-    return next();
-  };
+function validatePlanBody(schema) {
+  return validateBody(schema);
 }
 
 const objectIdSchema = z.string().regex(/^[0-9a-fA-F]{24}$/);
@@ -63,7 +50,7 @@ router.post(
   requireDb,
   requireAuth,
   requireRole("SUPER_ADMIN"),
-  validateBody(planCreateSchema),
+  validatePlanBody(planCreateSchema),
   createPlan
 ); // POST /api/plans
 
@@ -75,11 +62,11 @@ router.put(
   (req, res, next) => {
     const parsed = objectIdSchema.safeParse(req.params.id);
     if (!parsed.success) {
-      return res.status(400).send(prepareResponseMsg({}, false, "Invalid plan id", 400));
+      return sendError(res, "PLAN_INVALID_ID", 400);
     }
     return next();
   },
-  validateBody(planUpdateSchema),
+  validatePlanBody(planUpdateSchema),
   updatePlan
 ); // PUT /api/plans/:id
 
@@ -91,7 +78,7 @@ router.patch(
   (req, res, next) => {
     const parsed = objectIdSchema.safeParse(req.params.id);
     if (!parsed.success) {
-      return res.status(400).send(prepareResponseMsg({}, false, "Invalid plan id", 400));
+      return sendError(res, "PLAN_INVALID_ID", 400);
     }
     return next();
   },

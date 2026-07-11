@@ -1,48 +1,44 @@
 import mongoose from "mongoose";
 
-import Plan from "../models/Plan.js";
+import Tenant from "../models/Tenant.js";
 import User from "../models/User.js";
-import { prepareResponseMsg } from "../utils/helper.js";
-
-const LIMIT_EXCEEDED_MESSAGE = "Plan limit exceeded. Upgrade required.";
+import { getPlanById } from "../services/planService.js";
+import { sendError } from "../utils/helper.js";
+import { getRequestTenantId } from "../utils/requestTenant.js";
 
 /**
  * Middleware factory to enforce plan limits before a tenant action.
- *
- * Usage examples (future endpoints):
- *   router.post("/users", checkPlanLimits({ resource: "users" }), ...)
- *   router.post("/courses", checkPlanLimits({ resource: "courses" }), ...)
  */
 export function checkPlanLimits({ resource } = { resource: "users" }) {
   return async (req, res, next) => {
     try {
-      // Let super admin bypass tenant limits.
       if (req.user?.role === "SUPER_ADMIN") return next();
 
-      const tenant = req.tenant;
+      const tenantId = getRequestTenantId(req);
+      if (!tenantId) {
+        return sendError(res, "AUTH_TENANT_REQUIRED", 400);
+      }
+
+      const tenant = await Tenant.findById(tenantId);
       if (!tenant) {
-        return res.status(400).send(
-          prepareResponseMsg({}, false, "Tenant context required", 400)
-        );
+        return sendError(res, "TENANT_NOT_FOUND", 404);
       }
 
       if (!tenant.planId) {
-        return res.status(403).send(prepareResponseMsg({}, false, LIMIT_EXCEEDED_MESSAGE, 403));
+        return sendError(res, "PLAN_LIMIT_EXCEEDED", 403);
       }
 
-      const plan = await Plan.findById(tenant.planId);
+      const plan = await getPlanById(tenant.planId);
       if (!plan || plan.isActive !== true) {
-        return res.status(403).send(prepareResponseMsg({}, false, LIMIT_EXCEEDED_MESSAGE, 403));
+        return sendError(res, "PLAN_LIMIT_EXCEEDED", 403);
       }
 
       if (resource === "users") {
         const maxUsers = Number(plan.features?.maxUsers ?? 0);
-        const currentUsers = await User.countDocuments({ tenantId: tenant._id });
+        const currentUsers = await User.countDocuments({ tenantId });
 
         if (currentUsers >= maxUsers) {
-          return res.status(403).send(
-            prepareResponseMsg({}, false, LIMIT_EXCEEDED_MESSAGE, 403)
-          );
+          return sendError(res, "PLAN_LIMIT_USERS", 403);
         }
       }
 
@@ -51,41 +47,37 @@ export function checkPlanLimits({ resource } = { resource: "users" }) {
         const CourseModel = mongoose.connection.models.Course;
         if (!CourseModel) return next();
 
-        const currentCourses = await CourseModel.countDocuments({ tenantId: tenant._id });
+        const currentCourses = await CourseModel.countDocuments({ tenantId });
         if (currentCourses >= maxCourses) {
-          return res.status(403).send(prepareResponseMsg({}, false, LIMIT_EXCEEDED_MESSAGE, 403));
+          return sendError(res, "PLAN_LIMIT_COURSES", 403);
         }
       }
 
       if (resource.startsWith("ai:")) {
-        const aiFeature = resource.split(":")[1]; // tutor, evaluation, summarization, analytics
-        
-        // 1. Check if AI features are enabled at all
+        const aiFeature = resource.split(":")[1];
+
         if (!plan.features?.aiFeatures) {
-          return res.status(403).send(prepareResponseMsg({}, false, "AI features not included in your plan", 403));
+          return sendError(res, "PLAN_AI_NOT_INCLUDED", 403);
         }
 
-        // 2. Check specific feature flag if applicable
         if (aiFeature === "evaluation" && !plan.features?.evaluationEnabled) {
-          return res.status(403).send(prepareResponseMsg({}, false, "AI Evaluation not included in your plan", 403));
+          return sendError(res, "PLAN_AI_EVALUATION", 403);
         }
         if (aiFeature === "summarization" && !plan.features?.summarizationEnabled) {
-          return res.status(403).send(prepareResponseMsg({}, false, "Content Summarization not included in your plan", 403));
+          return sendError(res, "PLAN_AI_SUMMARIZATION", 403);
         }
         if (aiFeature === "analytics" && !plan.features?.predictiveAnalyticsEnabled) {
-          return res.status(403).send(prepareResponseMsg({}, false, "Predictive Analytics not included in your plan", 403));
+          return sendError(res, "PLAN_AI_ANALYTICS", 403);
         }
 
-        // 3. Check monthly request limit
         const maxAI = Number(plan.features?.maxAIRequests ?? 0);
-        if (maxAI > 0) { // 0 might mean unlimited for enterprise? or 0 means none. 
-                         // Let's assume > 0 is a limit.
+        if (maxAI > 0) {
           const month = new Date().toISOString().slice(0, 7);
           const AIUsageModel = mongoose.connection.models.AIUsage;
           if (AIUsageModel) {
-            const usage = await AIUsageModel.findOne({ tenantId: tenant._id, month });
+            const usage = await AIUsageModel.findOne({ tenantId, month });
             if (usage && usage.requestCount >= maxAI) {
-              return res.status(403).send(prepareResponseMsg({}, false, "Monthly AI request limit reached", 403));
+              return sendError(res, "PLAN_AI_MONTHLY_LIMIT", 403);
             }
           }
         }
@@ -97,4 +89,3 @@ export function checkPlanLimits({ resource } = { resource: "users" }) {
     }
   };
 }
-
