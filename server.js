@@ -15,6 +15,7 @@ import { fileURLToPath } from "url";
 import routes from "./routes/index.js";
 import { tenantContext } from "./middlewares/tenant-context.js";
 import { seedSuperAdmin } from "./utils/seedSuperAdmin.js";
+import { seedDefaultPlans } from "./utils/seedPlans.js";
 import { corsOrigin } from "./utils/cors.js";
 
 // Fix __dirname in ESM

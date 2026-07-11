@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-export const ROLES = ["SUPER_ADMIN", "TENANT_ADMIN", "TUTOR", "STUDENT"];
+export const ROLES = ["SUPER_ADMIN", "TENANT_ADMIN", "ORG_ADMIN", "TUTOR", "STUDENT"];
 
 const userSchema = new mongoose.Schema(
   {
@@ -8,11 +8,19 @@ const userSchema = new mongoose.Schema(
 
     name: { type: String, trim: true, default: "" },
     email: { type: String, required: true, lowercase: true, trim: true, index: true },
+    phone: { type: String, trim: true, default: "" },
+    profilePhoto: { type: String, default: "" },
     passwordHash: { type: String, required: true },
 
     role: { type: String, enum: ROLES, required: true, index: true },
 
     status: { type: String, enum: ["ACTIVE", "DISABLED"], default: "ACTIVE", index: true },
+    invitationStatus: {
+      type: String,
+      enum: ["PENDING", "ACCEPTED", "BLOCKED"],
+      default: "ACCEPTED",
+      index: true,
+    },
 
     failedLoginAttempts: { type: Number, default: 0 },
     lockUntil: { type: Date, default: null },

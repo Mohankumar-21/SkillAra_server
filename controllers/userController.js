@@ -67,7 +67,7 @@ export async function listUsers(req, res, next) {
     const { role, status, page = 1, limit = 20, search } = req.query;
     const tenantId = req.tenant._id;
 
-    const filter = { tenantId };
+    const filter = { tenantId, role: { $ne: "TENANT_ADMIN" } };
     if (role) filter.role = role;
     if (status) filter.status = status;
     if (search) {
@@ -103,13 +103,19 @@ export async function listUsers(req, res, next) {
 
 export async function createUser(req, res, next) {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, invitationStatus } = req.body;
     const tenantId = req.tenant._id;
 
-    if (!["TUTOR", "STUDENT"].includes(role)) {
+    if (!["TUTOR", "STUDENT", "ORG_ADMIN"].includes(role)) {
       return res
         .status(400)
-        .send(prepareResponseMsg({}, false, "Role must be TUTOR or STUDENT", 400));
+        .send(prepareResponseMsg({}, false, "Role must be TUTOR, STUDENT, or ORG_ADMIN", 400));
+    }
+
+    if (role === "ORG_ADMIN" && req.user.role !== "TENANT_ADMIN") {
+      return res
+        .status(403)
+        .send(prepareResponseMsg({}, false, "Only the organization owner can create Organization Admins", 403));
     }
 
     const existing = await User.findOne({ email, tenantId });
@@ -118,6 +124,7 @@ export async function createUser(req, res, next) {
     }
 
     const passwordHash = await hashPassword(password);
+    const inviteStatus = invitationStatus || "ACCEPTED";
     const user = await User.create({
       tenantId,
       name: name.trim(),
@@ -125,6 +132,7 @@ export async function createUser(req, res, next) {
       passwordHash,
       role,
       status: "ACTIVE",
+      invitationStatus: inviteStatus,
     });
 
     await syncTenantUserCount(tenantId);
@@ -171,10 +179,13 @@ export async function updateUser(req, res, next) {
 
     if (isAdmin) {
       if (req.body.role !== undefined) {
-        if (!["TUTOR", "STUDENT"].includes(req.body.role)) {
+        if (!["TUTOR", "STUDENT", "ORG_ADMIN"].includes(req.body.role)) {
           return res
             .status(400)
-            .send(prepareResponseMsg({}, false, "Role must be TUTOR or STUDENT", 400));
+            .send(prepareResponseMsg({}, false, "Role must be TUTOR, STUDENT, or ORG_ADMIN", 400));
+        }
+        if (req.body.role === "ORG_ADMIN" && req.user.role !== "TENANT_ADMIN") {
+          return res.status(403).send(prepareResponseMsg({}, false, "Forbidden", 403));
         }
         if (target.role === "TENANT_ADMIN") {
           return res
@@ -243,6 +254,29 @@ export async function updateUserStatus(req, res, next) {
       .send(
         prepareResponseMsg({ user: toPublicUser(updated) }, true, "User status updated", 200)
       );
+  } catch (err) {
+    return next(err);
+  }
+}
+
+export async function updateMyProfile(req, res, next) {
+  try {
+    const { phone, profilePhoto, name } = req.body;
+    const updates = {};
+
+    if (name !== undefined) updates.name = name.trim();
+    if (phone !== undefined) updates.phone = phone.trim();
+    if (profilePhoto !== undefined) updates.profilePhoto = profilePhoto;
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).send(prepareResponseMsg({}, false, "No fields to update", 400));
+    }
+
+    const updated = await User.findByIdAndUpdate(req.user._id, { $set: updates }, { new: true });
+
+    return res
+      .status(200)
+      .send(prepareResponseMsg({ user: toPublicUser(updated) }, true, "Profile updated successfully", 200));
   } catch (err) {
     return next(err);
   }

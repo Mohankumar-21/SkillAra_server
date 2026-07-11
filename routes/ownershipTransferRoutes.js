@@ -1,0 +1,107 @@
+import express from "express";
+import { z } from "zod";
+import {
+  createOwnershipTransferRequest,
+  listEligibleOwnershipTargets,
+  listMyOwnershipTransferRequests,
+  cancelOwnershipTransferRequest,
+  listOwnershipTransferRequests,
+  approveOwnershipTransferRequest,
+  rejectOwnershipTransferRequest,
+} from "../controllers/ownershipTransferController.js";
+import { requireAuth, requireRole, requireTenant } from "../middlewares/auth.js";
+import { requireDb } from "../utils/db-state.js";
+import { prepareResponseMsg } from "../utils/helper.js";
+
+const router = express.Router();
+
+const createSchema = z.object({
+  targetUserId: z.string().min(1),
+  reason: z.string().max(500).optional(),
+});
+
+const approveSchema = z.object({
+  reviewNote: z.string().max(500).optional(),
+});
+
+const rejectSchema = z.object({
+  reviewNote: z.string().trim().min(1).max(500),
+});
+
+function validate(schema) {
+  return (req, res, next) => {
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res
+        .status(400)
+        .send(prepareResponseMsg({ issues: parsed.error.issues }, false, "Validation failed", 400));
+    }
+    req.body = parsed.data;
+    return next();
+  };
+}
+
+router.get(
+  "/",
+  requireDb,
+  requireAuth,
+  requireRole("SUPER_ADMIN"),
+  listOwnershipTransferRequests
+);
+
+router.get(
+  "/eligible-targets",
+  requireDb,
+  requireAuth,
+  requireRole("TENANT_ADMIN"),
+  requireTenant,
+  listEligibleOwnershipTargets
+);
+
+router.get(
+  "/my",
+  requireDb,
+  requireAuth,
+  requireRole("TENANT_ADMIN"),
+  requireTenant,
+  listMyOwnershipTransferRequests
+);
+
+router.post(
+  "/",
+  requireDb,
+  requireAuth,
+  requireRole("TENANT_ADMIN"),
+  requireTenant,
+  validate(createSchema),
+  createOwnershipTransferRequest
+);
+
+router.post(
+  "/:id/cancel",
+  requireDb,
+  requireAuth,
+  requireRole("TENANT_ADMIN"),
+  requireTenant,
+  cancelOwnershipTransferRequest
+);
+
+router.post(
+  "/:id/approve",
+  requireDb,
+  requireAuth,
+  requireRole("SUPER_ADMIN"),
+  validate(approveSchema),
+  approveOwnershipTransferRequest
+);
+
+router.post(
+  "/:id/reject",
+  requireDb,
+  requireAuth,
+  requireRole("SUPER_ADMIN"),
+  validate(rejectSchema),
+  rejectOwnershipTransferRequest
+);
+
+export default router;
