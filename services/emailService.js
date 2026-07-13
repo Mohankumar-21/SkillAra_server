@@ -69,18 +69,46 @@ export async function sendInviteEmail({ to, subject, html, text }) {
 export function buildInviteEmailContent({ tenantName, inviteUrl }) {
   const subject = `You're invited to join ${tenantName} on SkillAra`;
   const text = [
+    `Hello,`,
+    "",
     `You've been invited to join ${tenantName} on SkillAra.`,
     "",
-    "Complete your signup using the link below (expires in 7 days):",
+    `To accept this invitation and complete your signup, click the link below (expires in 7 days):`,
     inviteUrl,
     "",
-    "If you did not expect this invitation, you can ignore this email.",
+    "If you did not expect this invitation, you can safely ignore this email.",
+    "",
+    "Best regards,",
+    "The SkillAra Team",
   ].join("\n");
 
   const html = `
-    <p>You've been invited to join <strong>${tenantName}</strong> on SkillAra.</p>
-    <p><a href="${inviteUrl}">Complete your signup</a> (link expires in 7 days).</p>
-    <p>If you did not expect this invitation, you can ignore this email.</p>
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; padding: 40px 20px; color: #1e293b; line-height: 1.6;">
+      <div style="max-width: 540px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; border: 1px solid #f1f5f9; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05); padding: 40px; text-align: center;">
+        <div style="margin-bottom: 24px;">
+          <span style="font-size: 28px; font-weight: 800; color: #4f46e5; letter-spacing: -0.025em;">SkillAra</span>
+        </div>
+        <h2 style="font-size: 22px; font-weight: 700; color: #0f172a; margin-top: 0; margin-bottom: 12px; letter-spacing: -0.025em;">Invitation to join ${tenantName}</h2>
+        <p style="font-size: 16px; color: #475569; margin-bottom: 28px; text-align: left;">
+          You have been invited to join <strong>${tenantName}</strong> as a team member on SkillAra. Complete your profile setup to gain access to your organization's workspace.
+        </p>
+        <div style="margin-bottom: 32px;">
+          <a href="${inviteUrl}" style="display: inline-block; background-color: #4f46e5; color: #ffffff; font-size: 15px; font-weight: 600; text-decoration: none; padding: 12px 32px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2), 0 2px 4px -2px rgba(79, 70, 229, 0.2);">
+            Accept Invitation &amp; Sign Up
+          </a>
+        </div>
+        <p style="font-size: 13px; color: #94a3b8; margin-bottom: 24px; text-align: center;">
+          This secure invitation link is valid for <strong>7 days</strong>.
+        </p>
+        <hr style="border: 0; border-top: 1px solid #f1f5f9; margin-bottom: 24px;" />
+        <p style="font-size: 12px; color: #94a3b8; margin-bottom: 0; line-height: 1.5; text-align: left;">
+          If you did not expect this invitation, or if you do not wish to join ${tenantName}, you can safely ignore this email. No account has been created for you yet.
+        </p>
+      </div>
+      <div style="text-align: center; margin-top: 24px; font-size: 12px; color: #94a3b8;">
+        &copy; ${new Date().getFullYear()} SkillAra. All rights reserved.
+      </div>
+    </div>
   `.trim();
 
   return { subject, text, html, from: resolveFromAddress() };
