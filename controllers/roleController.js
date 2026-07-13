@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import Tenant from "../models/Tenant.js";
 import SuperAdmin, { LEGACY_PLATFORM_CONFIG_EMAIL } from "../models/SuperAdmin.js";
 import User from "../models/User.js";
@@ -11,12 +10,8 @@ import {
   getPlatformRoleById,
   getTenantRoleById,
   normalizeRoleForApiResponse,
-  seedPlatformRoles,
-  seedTenantRoles,
 } from "../services/roleService.js";
 import { writeAuditLog } from "../services/auditLog.js";
-
-const OBJECT_ID_RE = /^[0-9a-fA-F]{24}$/;
 
 function slugify(value) {
   return String(value || "")
@@ -43,7 +38,6 @@ function sanitizePermissions(permissions, modules) {
 export async function listTenantRoles(req, res, next) {
   try {
     const tenantId = req.tenantId;
-    await seedTenantRoles(tenantId);
     const tenant = await Tenant.findById(tenantId);
     const roles = tenant?.roles?.filter((r) => r.status !== "deleted") || [];
     const payload = await attachRoleCounts(tenantId, roles);
@@ -189,7 +183,6 @@ export async function deleteTenantRole(req, res, next) {
 
 export async function listPlatformRoles(req, res, next) {
   try {
-    await seedPlatformRoles();
     const admin = await getPlatformRoleCatalogAdmin();
     if (!admin) return sendError(res, "GENERAL_NOT_FOUND", 404);
     const roles = admin.roles.filter((r) => r.status !== "deleted");
@@ -316,19 +309,6 @@ export async function deletePlatformRole(req, res, next) {
     await admin.save();
 
     return res.status(200).send(prepareResponseMsg({ ok: true }, true, "Platform role deleted", 200));
-  } catch (err) {
-    return next(err);
-  }
-}
-
-export async function seedTenantRolesForTenant(req, res, next) {
-  try {
-    const tenantId = req.params.tenantId;
-    if (!OBJECT_ID_RE.test(String(tenantId))) return sendError(res, "TENANT_INVALID_ID", 400);
-    const roles = await seedTenantRoles(new mongoose.Types.ObjectId(tenantId));
-    return res.status(200).send(
-      prepareResponseMsg({ roles: roles.map(normalizeRoleForApiResponse) }, true, "Tenant roles seeded", 200)
-    );
   } catch (err) {
     return next(err);
   }

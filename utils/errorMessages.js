@@ -39,13 +39,17 @@ export const ERROR_MESSAGES = {
   TENANT_WORKSPACE_INVALID: "Invalid workspace name.",
   TENANT_WORKSPACE_NOT_FOUND: "Workspace not found.",
   TENANT_EXISTS: "An organization with this domain, subdomain, or email already exists.",
-  TENANT_EMAIL_IN_USE: "This email is already in use by another organization.",
+  TENANT_EMAIL_IN_USE: "This contact email is already used by another organization.",
+  TENANT_OWNER_EMAIL_IN_USE:
+    "This owner email is already used as another organization's contact email. Use the contact email, or a different owner email.",
   TENANT_OWNER_ROLE_REQUIRED: "The organization owner must have the Organization Owner role.",
   TENANT_STATUS_INVALID: "Status must be true or false.",
   TENANT_CREATE_FAILED: "We couldn't create the organization. Please try again.",
 
   USER_NOT_FOUND: "User not found.",
   USER_EMAIL_EXISTS: "An account with this email already exists in this organization.",
+  USER_EMAIL_CROSS_TENANT_EXISTS:
+    "This email already has a login in another organization. That is allowed — they will use this email to sign in to the new workspace separately.",
   USER_ROLE_INVALID: "Role must be Tutor, Student, or Organization Admin.",
   USER_ORG_ADMIN_FORBIDDEN: "Only the Organization Owner can assign the Organization Admin role.",
   USER_OWNER_PROTECTED: "The organization owner cannot be modified from the users list.",
@@ -67,6 +71,7 @@ export const ERROR_MESSAGES = {
   MASTER_DATA_CATEGORY_INVALID: "Invalid master data category.",
   MASTER_DATA_NAME_INVALID: "Name must be at least 2 characters.",
   MASTER_DATA_NAME_EXISTS: "An item with this name already exists in this category.",
+  MASTER_DATA_CODE_EXISTS: "An item with this code already exists in this category.",
   MASTER_DATA_IN_USE: "This item is assigned to users and cannot be deleted.",
   MASTER_DATA_NO_FIELDS: "No fields were provided to update.",
 

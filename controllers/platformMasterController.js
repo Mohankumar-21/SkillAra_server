@@ -28,6 +28,9 @@ export const createOrganizationTypeHandler = async (req, res, next) => {
     if (err?.code === 11000) {
       return sendError(res, "ORG_TYPE_EXISTS", 409);
     }
+    if (err?.code === "VALIDATION") {
+      return sendError(res, "GENERAL_VALIDATION_FAILED", 400, { detail: err.message });
+    }
     return next(err);
   }
 };
@@ -44,6 +47,9 @@ export const updateOrganizationTypeHandler = async (req, res, next) => {
   } catch (err) {
     if (err?.code === 11000) {
       return sendError(res, "ORG_TYPE_EXISTS", 409);
+    }
+    if (err?.code === "VALIDATION") {
+      return sendError(res, "GENERAL_VALIDATION_FAILED", 400, { detail: err.message });
     }
     return next(err);
   }

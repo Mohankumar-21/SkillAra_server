@@ -1,19 +1,14 @@
-import Tenant from "../models/Tenant.js";
 import logger from "../core/logger.js";
-import {
-  migrateLegacyTenantMasterData,
-  seedTenantMasterData,
-} from "../services/masterDataService.js";
+import { migrateLegacyTenantMasterData } from "../services/masterDataService.js";
 
-/** Migrate legacy master data collection and seed defaults for all tenants. */
-export async function backfillTenantMasterData() {
-  await migrateLegacyTenantMasterData();
-
-  const tenants = await Tenant.find({}).select("_id");
-  for (const tenant of tenants) {
-    await seedTenantMasterData(tenant._id);
-  }
-  if (tenants.length > 0) {
-    logger.info(`Ensured embedded master data for ${tenants.length} tenant(s)`);
-  }
+/**
+ * @deprecated Do not call on startup.
+ * Legacy migration used to re-copy TenantMasterData into Tenant.departments on every
+ * restart, which resurrected deleted departments. Defaults now seed only on tenant create.
+ */
+export async function migrateLegacyTenantMasterDataOnly() {
+  logger.warn(
+    "migrateLegacyTenantMasterDataOnly is deprecated and should not run on startup"
+  );
+  return migrateLegacyTenantMasterData();
 }

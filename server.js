@@ -7,7 +7,7 @@ import { seedDefaultPlans, migrateLegacyPlansCollection } from "./utils/seedPlan
 import { seedDefaultOrganizationTypes } from "./services/platformMasterService.js";
 import { backfillTenantAdmins } from "./utils/backfillTenantAdmins.js";
 import { backfillRolesAndPermissions } from "./utils/backfillRoles.js";
-import { backfillTenantMasterData } from "./utils/backfillMasterData.js";
+import { syncTenantIndexes } from "./utils/syncTenantIndexes.js";
 
 dotenv.config();
 
@@ -15,13 +15,13 @@ const app = createApp();
 
 if (process.env.NODE_ENV !== "test") {
   connectToDb()
+    .then(() => syncTenantIndexes())
     .then(() => seedSuperAdmin())
     .then(() => migrateLegacyPlansCollection())
     .then(() => seedDefaultPlans())
     .then(() => seedDefaultOrganizationTypes())
     .then(() => backfillTenantAdmins())
     .then(() => backfillRolesAndPermissions())
-    .then(() => backfillTenantMasterData())
     .catch((err) => logger.error(err));
 
   const port = process.env.PORT || 5000;
