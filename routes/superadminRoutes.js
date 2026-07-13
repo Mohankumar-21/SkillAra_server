@@ -11,7 +11,6 @@ import {
   getPlatformPermissionModules,
   getPlatformRole,
   listPlatformRoles,
-  seedTenantRolesForTenant,
   updatePlatformRole,
 } from "../controllers/roleController.js";
 import {
@@ -30,17 +29,17 @@ const router = express.Router();
 
 const brandingSchema = z
   .object({
-    welcome_message: z.string().optional(),
-    primary_color: z.string().optional(),
-    secondary_color: z.string().optional(),
+    welcome_message: z.string().max(250).optional(),
+    primary_color: z.string().regex(/^#([0-9A-Fa-f]{6})$/).optional(),
+    secondary_color: z.string().regex(/^#([0-9A-Fa-f]{6})$/).optional(),
   })
   .optional();
 
 const adminSchema = z
   .object({
-    name: z.string().trim().optional(),
+    name: z.string().trim().min(2).max(100).optional(),
     email: z.string().email().optional(),
-    phone: z.string().optional(),
+    phone: z.string().trim().max(20).optional(),
     role: z.string().optional(),
   })
   .optional();
@@ -52,37 +51,37 @@ const createTenantSchema = z.object({
     .string()
     .trim()
     .toLowerCase()
-    .min(2)
-    .max(40)
+    .min(3)
+    .max(15)
     .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/)
     .optional(),
   sub_domain: z
     .string()
     .trim()
     .toLowerCase()
-    .min(2)
-    .max(40)
+    .min(3)
+    .max(15)
     .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/)
     .optional(),
   domain: z.string().trim().optional(),
   email: z.string().email().optional(),
-  phone: z.string().optional(),
+  phone: z.string().trim().min(7).max(20).optional(),
   org_type: z.string().optional(),
   orgType: z.string().optional(),
   orgTypeId: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
-  industry: z.string().optional(),
-  website: z.string().optional(),
-  country: z.string().optional(),
-  timezone: z.string().optional(),
-  currency: z.string().optional(),
+  industry: z.string().trim().max(80).optional(),
+  website: z.string().trim().max(200).optional(),
+  country: z.string().trim().min(2).max(2).optional(),
+  timezone: z.string().trim().min(1).max(64).optional(),
+  currency: z.string().trim().min(3).max(3).optional(),
   logo: z.any().optional(),
   branding: brandingSchema,
   plan: z.string().trim().optional(),
   planId: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
   status: z.boolean().optional(),
-  owner_first: z.string().optional(),
-  owner_last: z.string().optional(),
-  owner_phone: z.string().optional(),
+  owner_first: z.string().trim().min(2).max(50).optional(),
+  owner_last: z.string().trim().min(1).max(50).optional(),
+  owner_phone: z.string().trim().max(20).optional(),
   adminEmail: z
     .string()
     .email()
@@ -152,19 +151,16 @@ router.patch(
   updatePlatformRole
 );
 router.delete("/roles/:id", requireDb, authenticate, requireSuperadmin, deletePlatformRole);
-router.post(
-  "/tenants/:tenantId/seed-roles",
-  requireDb,
-  authenticate,
-  requireSuperadmin,
-  validateTenantIdParam,
-  seedTenantRolesForTenant
-);
 
 const organizationTypeSchema = z.object({
   name: z.string().trim().min(2).max(120),
-  code: z.string().trim().max(80).optional(),
-  description: z.string().trim().max(500).optional(),
+  code: z.preprocess(
+    (v) => {
+      if (v === "" || v == null) return undefined;
+      return String(v).trim().toUpperCase();
+    },
+    z.string().regex(/^[A-Z0-9]{3}$/, "Code must be exactly 3 characters").optional()
+  ),
   status: z.enum(["active", "inactive"]).optional(),
   sortOrder: z.number().int().min(0).optional(),
 });

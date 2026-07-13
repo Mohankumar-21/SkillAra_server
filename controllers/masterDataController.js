@@ -6,19 +6,18 @@ import {
   getMasterDataItemById,
   listMasterCategories,
   listMasterDataItems,
-  seedTenantMasterData,
   updateMasterDataItem,
 } from "../services/masterDataService.js";
 import { isValidMasterCategory } from "../data/masterDataCatalog.js";
 import { writeAuditLog } from "../services/auditLog.js";
 
 function slugifyCode(name) {
-  return String(name || "")
+  const raw = String(name || "")
     .trim()
     .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 30);
+    .replace(/[^A-Z0-9]/g, "");
+  if (raw.length >= 3) return raw.slice(0, 3);
+  return `${raw}XXX`.slice(0, 3);
 }
 
 export async function getMasterCategories(req, res, next) {
@@ -109,7 +108,9 @@ export async function createMasterDataItemHandler(req, res, next) {
     });
 
     if (result.error) {
-      return sendError(res, result.error, result.error === "MASTER_DATA_NAME_EXISTS" ? 409 : 400);
+      const conflict =
+        result.error === "MASTER_DATA_NAME_EXISTS" || result.error === "MASTER_DATA_CODE_EXISTS";
+      return sendError(res, result.error, conflict ? 409 : 400);
     }
 
     await writeAuditLog({
@@ -152,7 +153,10 @@ export async function updateMasterDataItemHandler(req, res, next) {
 
     const result = await updateMasterDataItem(req.tenantId, req.params.id, updates);
     if (result.error) {
-      const status = result.error === "MASTER_DATA_NOT_FOUND" ? 404 : result.error === "MASTER_DATA_NAME_EXISTS" ? 409 : 400;
+      const conflict =
+        result.error === "MASTER_DATA_NAME_EXISTS" || result.error === "MASTER_DATA_CODE_EXISTS";
+      const status =
+        result.error === "MASTER_DATA_NOT_FOUND" ? 404 : conflict ? 409 : 400;
       return sendError(res, result.error, status);
     }
 
@@ -182,22 +186,6 @@ export async function deleteMasterDataItemHandler(req, res, next) {
     return res
       .status(200)
       .send(prepareResponseMsg({ ok: true }, true, "Master data deleted successfully", 200));
-  } catch (err) {
-    return next(err);
-  }
-}
-
-export async function seedMasterDataForTenant(req, res, next) {
-  try {
-    const items = await seedTenantMasterData(req.tenantId);
-    return res.status(200).send(
-      prepareResponseMsg(
-        { items },
-        true,
-        "Master data seeded",
-        200
-      )
-    );
   } catch (err) {
     return next(err);
   }

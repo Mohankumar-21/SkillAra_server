@@ -120,9 +120,10 @@ export function buildTenantAdminWelcomeEmailContent({
   loginUrl,
   temporaryPassword,
 }) {
+  const greetingName = adminName ? ` ${adminName}` : "";
   const subject = `Your ${tenantName} admin account on SkillAra`;
   const text = [
-    `Hello${adminName ? ` ${adminName}` : ""},`,
+    `Hello${greetingName},`,
     "",
     `An organization admin account has been created for ${tenantName} on SkillAra.`,
     "",
@@ -133,16 +134,46 @@ export function buildTenantAdminWelcomeEmailContent({
     "You will be asked to set a new password when you sign in for the first time.",
     "",
     "If you did not expect this email, contact platform support.",
+    "",
+    "Best regards,",
+    "The SkillAra Team",
   ].join("\n");
 
   const html = `
-    <div style="font-family:Segoe UI,Arial,sans-serif;line-height:1.5;color:#1e293b;max-width:560px">
-      <p>Hello${adminName ? ` ${adminName}` : ""},</p>
-      <p>An organization admin account has been created for <strong>${tenantName}</strong> on SkillAra.</p>
-      <p><strong>Sign in:</strong> <a href="${loginUrl}">${loginUrl}</a></p>
-      <p><strong>Temporary password:</strong> <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px">${temporaryPassword}</code></p>
-      <p>You will be prompted to choose a new password on your first sign-in.</p>
-      <p style="color:#64748b;font-size:14px">If you did not expect this email, contact platform support.</p>
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; padding: 40px 20px; color: #1e293b; line-height: 1.6;">
+      <div style="max-width: 540px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; border: 1px solid #f1f5f9; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05); padding: 40px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <span style="font-size: 28px; font-weight: 800; color: #4f46e5; letter-spacing: -0.025em;">SkillAra</span>
+        </div>
+        <h2 style="font-size: 22px; font-weight: 700; color: #0f172a; margin-top: 0; margin-bottom: 12px; letter-spacing: -0.025em; text-align: center;">
+          Your admin account is ready
+        </h2>
+        <p style="font-size: 16px; color: #475569; margin-bottom: 20px;">
+          Hello${greetingName},
+        </p>
+        <p style="font-size: 16px; color: #475569; margin-bottom: 24px;">
+          An organization admin account has been created for <strong>${tenantName}</strong> on SkillAra.
+        </p>
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 20px; margin-bottom: 28px;">
+          <p style="margin: 0 0 10px; font-size: 14px; color: #64748b;"><strong style="color:#0f172a;">Sign in URL</strong><br /><a href="${loginUrl}" style="color:#4f46e5; word-break: break-all;">${loginUrl}</a></p>
+          <p style="margin: 0; font-size: 14px; color: #64748b;"><strong style="color:#0f172a;">Temporary password</strong><br /><code style="display:inline-block; margin-top:4px; background:#eef2ff; color:#3730a3; padding:6px 10px; border-radius:6px; font-size:14px; letter-spacing:0.02em;">${temporaryPassword}</code></p>
+        </div>
+        <div style="text-align: center; margin-bottom: 28px;">
+          <a href="${loginUrl}" style="display: inline-block; background-color: #4f46e5; color: #ffffff; font-size: 15px; font-weight: 600; text-decoration: none; padding: 12px 32px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);">
+            Sign in to your workspace
+          </a>
+        </div>
+        <p style="font-size: 14px; color: #64748b; margin-bottom: 0;">
+          You will be prompted to choose a new password on your first sign-in.
+        </p>
+        <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
+        <p style="font-size: 12px; color: #94a3b8; margin: 0;">
+          If you did not expect this email, contact platform support.
+        </p>
+      </div>
+      <div style="text-align: center; margin-top: 24px; font-size: 12px; color: #94a3b8;">
+        &copy; ${new Date().getFullYear()} SkillAra. All rights reserved.
+      </div>
     </div>
   `.trim();
 

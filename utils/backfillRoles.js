@@ -6,10 +6,12 @@ import {
   getPlatformSuperAdminRole,
   resolveTenantRoleForUser,
   seedPlatformRoles,
-  seedTenantRoles,
 } from "../services/roleService.js";
 
-/** Seed embedded roles, backfill roleId on users, and remove legacy role field. */
+/**
+ * Backfill roleId on users/superadmins. Does NOT re-seed tenant default roles
+ * (those run only on tenant create via seedNewTenantDefaults).
+ */
 export async function backfillRolesAndPermissions() {
   await seedPlatformRoles();
   const superAdminRole = await getPlatformSuperAdminRole();
@@ -30,8 +32,6 @@ export async function backfillRolesAndPermissions() {
   let userUpdates = 0;
 
   for (const tenant of tenants) {
-    await seedTenantRoles(tenant._id);
-
     const users = await User.find({ tenantId: tenant._id });
 
     for (const user of users) {

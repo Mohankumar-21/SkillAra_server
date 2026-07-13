@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import embeddedRoleSchema from "./embeddedRole.js";
 import embeddedPlanSchema from "./embeddedPlan.js";
-import embeddedLookupSchema from "./embeddedLookup.js";
+import { embeddedOrganizationTypeSchema } from "./embeddedLookup.js";
 
 export const SUPERADMIN_STATUSES = ["active", "disabled"];
 
@@ -49,7 +49,7 @@ const superAdminSchema = new mongoose.Schema(
     },
     /** Organization type master — Tenant.orgTypeId references organizationTypes[]._id */
     organizationTypes: {
-      type: [embeddedLookupSchema],
+      type: [embeddedOrganizationTypeSchema],
       default: () => [],
     },
     /** References roles[]._id on the primary super admin's roles array. */

@@ -1,10 +1,10 @@
-/** Default organization types seeded on the primary super admin account. */
+/** Default organization types seeded on the primary super admin account. Codes are exactly 3 chars. */
 export const DEFAULT_ORGANIZATION_TYPES = [
-  { name: "Training Institute", code: "training-institute" },
-  { name: "Coaching Center", code: "coaching-center" },
-  { name: "University", code: "university" },
-  { name: "Company", code: "company" },
-  { name: "Bootcamp", code: "bootcamp" },
-  { name: "Individual Instructor", code: "individual-instructor" },
-  { name: "EdTech Startup", code: "edtech-startup" },
+  { name: "Training Institute", code: "TRI" },
+  { name: "Coaching Center", code: "COA" },
+  { name: "University", code: "UNI" },
+  { name: "Company", code: "COM" },
+  { name: "Bootcamp", code: "BOO" },
+  { name: "Individual Instructor", code: "IND" },
+  { name: "EdTech Startup", code: "EDT" },
 ];

@@ -37,8 +37,8 @@ export function createApp() {
     })
   );
   app.use(cookieParser());
-  app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || "1mb" }));
-  app.use(express.urlencoded({ extended: true, limit: process.env.JSON_BODY_LIMIT || "1mb" }));
+  app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || "5mb" }));
+  app.use(express.urlencoded({ extended: true, limit: process.env.JSON_BODY_LIMIT || "5mb" }));
   app.use((req, _res, next) => {
     if (req.body && typeof req.body === "object") {
       req.body = sanitize(req.body);

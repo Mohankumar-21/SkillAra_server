@@ -239,19 +239,45 @@ export const resolveTenant = async (req, res) => {
   return res.status(200).send(resp);
 };
 
-const RESERVED = new Set(["www", "admin", "api"]);
+const RESERVED = new Set([
+  "www",
+  "admin",
+  "api",
+  "app",
+  "mail",
+  "support",
+  "help",
+  "blog",
+  "status",
+  "cdn",
+  "static",
+  "assets",
+]);
 
+/** Public subdomain check — always 200 for valid format (availability / workspace lookup). */
 export const checkTenantSubdomain = async (req, res) => {
   const sub = String(req.params.subdomain || "")
     .trim()
     .toLowerCase();
 
-  if (!sub || !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(sub)) {
+  if (!sub || sub.length < 3 || sub.length > 15 || !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(sub) || /--/.test(sub)) {
     return sendError(res, "TENANT_WORKSPACE_INVALID", 400);
   }
 
   if (RESERVED.has(sub)) {
-    return sendError(res, "TENANT_WORKSPACE_NOT_FOUND", 404, { exists: false });
+    return res.status(200).send(
+      prepareResponseMsg(
+        {
+          exists: false,
+          available: false,
+          reserved: true,
+          sub_domain: sub,
+        },
+        true,
+        "Subdomain is reserved",
+        200
+      )
+    );
   }
 
   const tenant = await Tenant.findOne({
@@ -259,25 +285,36 @@ export const checkTenantSubdomain = async (req, res) => {
   }).select("name subdomain sub_domain status logo tenant_name");
 
   if (!tenant) {
-    return sendError(res, "TENANT_WORKSPACE_NOT_FOUND", 404, { exists: false });
+    return res.status(200).send(
+      prepareResponseMsg(
+        {
+          exists: false,
+          available: true,
+          sub_domain: sub,
+        },
+        true,
+        "Subdomain is available",
+        200
+      )
+    );
   }
 
   const isInactive =
     tenant.status === "suspended" || tenant.status === false || tenant.status === "inactive";
-  if (isInactive) {
-    return sendError(res, "TENANT_WORKSPACE_NOT_FOUND", 404, { exists: false });
-  }
 
   return res.status(200).send(
     prepareResponseMsg(
       {
         exists: true,
+        available: false,
+        inactive: isInactive,
         tenant_name: tenant.name || tenant.tenant_name,
         sub_domain: tenant.subdomain || tenant.sub_domain,
         logo: tenant.logo,
+        status: tenant.status,
       },
       true,
-      "Workspace found",
+      isInactive ? "Workspace exists but is inactive" : "Workspace found",
       200
     )
   );

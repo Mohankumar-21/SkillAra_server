@@ -191,33 +191,6 @@ export const TENANT_ROLE_SEEDS = [
     },
   },
   {
-    slug: "finance",
-    name: "Finance",
-    description: "Access to billing, invoices, and financial reports.",
-    roleType: "system",
-    protected: true,
-    permissions: {
-      dashboard: ["view"],
-      reports: ["view", "export"],
-      analytics: ["view", "export"],
-      "org-settings": ["view"],
-    },
-  },
-  {
-    slug: "hr",
-    name: "HR",
-    description: "Manages employee records and user onboarding.",
-    roleType: "system",
-    protected: true,
-    permissions: {
-      dashboard: ["view"],
-      users: ["view", "create", "edit", "assign", "export"],
-      students: ["view", "export"],
-      instructors: ["view"],
-      reports: ["view", "export"],
-    },
-  },
-  {
     slug: "support",
     name: "Support",
     description: "Handles user support and community moderation.",

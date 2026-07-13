@@ -57,51 +57,54 @@ export function normalizeError(err) {
 
 
   if (err?.code === 11000) {
+    const keyPattern = err.keyPattern || {};
+    const fields = Object.keys(keyPattern);
+    const field = fields.join(" ");
 
-    const field = Object.keys(err.keyPattern || {})[0] || "";
-
-    const errorKey =
-
-      field.includes("email") || field.includes("sub_domain") || field.includes("domain")
-
-        ? field.includes("email") && !field.includes("sub")
-
-          ? "USER_EMAIL_EXISTS"
-
-          : "TENANT_EXISTS"
-
-        : "GENERAL_VALIDATION_FAILED";
+    let errorKey = "GENERAL_VALIDATION_FAILED";
+    if (fields.includes("subdomain") || fields.includes("sub_domain")) {
+      errorKey = "TENANT_SUBDOMAIN_TAKEN";
+    } else if (fields.includes("email") && fields.includes("tenantId")) {
+      errorKey = "USER_EMAIL_EXISTS";
+    } else if (fields.includes("email")) {
+      errorKey = "TENANT_EMAIL_IN_USE";
+    } else if (fields.includes("domain")) {
+      errorKey = "TENANT_EXISTS";
+    }
 
     return {
-
       statusCode: 409,
-
       errorKey,
-
       errorMessage: getErrorMessage(errorKey),
-
-      data: {},
-
+      data: { fields },
     };
-
   }
 
 
 
   if (err?.name === "ValidationError") {
-
+    const details = Object.values(err.errors || {})
+      .map((e) => e?.message)
+      .filter(Boolean);
     return {
-
       statusCode: 400,
-
       errorKey: "GENERAL_VALIDATION_FAILED",
-
-      errorMessage: getErrorMessage("GENERAL_VALIDATION_FAILED"),
-
-      data: {},
-
+      errorMessage: details[0] || getErrorMessage("GENERAL_VALIDATION_FAILED"),
+      data: { detail: details[0] || undefined, issues: details },
     };
+  }
 
+  if (
+    err?.type === "entity.too.large" ||
+    err?.status === 413 ||
+    /request entity too large/i.test(String(err?.message || ""))
+  ) {
+    return {
+      statusCode: 413,
+      errorKey: "GENERAL_VALIDATION_FAILED",
+      errorMessage: "Upload is too large. Use a smaller logo (under 2MB) and try again.",
+      data: { detail: "Upload is too large. Use a smaller logo (under 2MB) and try again." },
+    };
   }
 
 
