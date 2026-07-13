@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import embeddedRoleSchema from "./embeddedRole.js";
-import embeddedLookupSchema from "./embeddedLookup.js";
+import { embeddedLookupSchema } from "./embeddedLookup.js";
 
 export const TENANT_STATUSES = ["active", "suspended"];
 export const SUBSCRIPTION_STATUSES = ["ACTIVE", "TRIAL", "EXPIRED"];
@@ -100,7 +100,7 @@ const tenantSchema = new mongoose.Schema(
   }
 );
 
-tenantSchema.index({ email: 1 }, { sparse: true });
+tenantSchema.index({ email: 1 }, { unique: true, sparse: true });
 
 const Tenant = mongoose.model("Tenant", tenantSchema);
 export default Tenant;

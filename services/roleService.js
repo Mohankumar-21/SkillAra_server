@@ -161,8 +161,10 @@ export async function seedPlatformRoles() {
   return admin.roles;
 }
 
-export async function seedTenantRoles(tenantId) {
-  const tenant = await Tenant.findById(tenantId);
+export async function seedTenantRoles(tenantId, { session } = {}) {
+  const query = Tenant.findById(tenantId);
+  if (session) query.session(session);
+  const tenant = await query;
   if (!tenant) return [];
 
   let changed = false;
@@ -184,17 +186,19 @@ export async function seedTenantRoles(tenantId) {
     }
   }
 
-  if (changed) await tenant.save();
+  if (changed) await tenant.save(session ? { session } : undefined);
   return tenant.roles;
 }
 
-export async function getTenantRoles(tenantId) {
-  const tenant = await Tenant.findById(tenantId).select("roles");
+export async function getTenantRoles(tenantId, { session } = {}) {
+  const query = Tenant.findById(tenantId).select("roles");
+  if (session) query.session(session);
+  const tenant = await query;
   return tenant?.roles || [];
 }
 
-export async function getTenantRoleBySlug(tenantId, slug) {
-  const roles = await getTenantRoles(tenantId);
+export async function getTenantRoleBySlug(tenantId, slug, { session } = {}) {
+  const roles = await getTenantRoles(tenantId, { session });
   return findRoleBySlug(roles, slug) || null;
 }
 

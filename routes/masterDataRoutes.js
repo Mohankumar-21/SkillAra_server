@@ -6,7 +6,6 @@ import {
   getMasterCategories,
   getMasterDataItem,
   listMasterData,
-  seedMasterDataForTenant,
   updateMasterDataItem,
 } from "../controllers/masterDataController.js";
 import { MASTER_DATA_CATEGORY_KEYS } from "../data/masterDataCatalog.js";
@@ -18,10 +17,18 @@ const router = express.Router();
 
 const categorySchema = z.enum(MASTER_DATA_CATEGORY_KEYS);
 
+const codeSchema = z
+  .string()
+  .trim()
+  .transform((v) => v.toUpperCase())
+  .refine((v) => v === "" || /^[A-Z0-9]{3}$/.test(v), {
+    message: "Code must be exactly 3 letters or numbers",
+  });
+
 const createSchema = z.object({
   category: categorySchema,
   name: z.string().trim().min(2).max(80),
-  code: z.string().trim().max(30).optional(),
+  code: codeSchema.optional(),
   description: z.string().trim().max(500).optional(),
   status: z.enum(["active", "inactive"]).optional(),
   sortOrder: z.number().int().min(0).max(9999).optional(),
@@ -30,7 +37,7 @@ const createSchema = z.object({
 const updateSchema = z
   .object({
     name: z.string().trim().min(2).max(80).optional(),
-    code: z.string().trim().max(30).optional(),
+    code: codeSchema.optional(),
     description: z.string().trim().max(500).optional(),
     status: z.enum(["active", "inactive"]).optional(),
     sortOrder: z.number().int().min(0).max(9999).optional(),
@@ -44,15 +51,6 @@ router.get(
   requireRole("TENANT_ADMIN", "ORG_ADMIN"),
   requireTenant,
   getMasterCategories
-);
-
-router.post(
-  "/seed",
-  requireDb,
-  requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
-  requireTenant,
-  seedMasterDataForTenant
 );
 
 router.get(

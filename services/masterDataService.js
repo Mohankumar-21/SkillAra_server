@@ -8,6 +8,7 @@ import {
   getTenantFieldForCategory,
   isValidMasterCategory,
   MASTER_DATA_CATEGORIES,
+  normalizeMasterSeed,
 } from "../data/masterDataCatalog.js";
 
 function ensureArray(tenant, field) {
@@ -53,8 +54,10 @@ export function listMasterCategories() {
   }));
 }
 
-async function loadTenantForMasterData(tenantId) {
-  return Tenant.findById(tenantId);
+async function loadTenantForMasterData(tenantId, session) {
+  const query = Tenant.findById(tenantId);
+  if (session) query.session(session);
+  return query;
 }
 
 function getCategoryForItem(tenant, id) {
@@ -65,8 +68,21 @@ function getCategoryForItem(tenant, id) {
   return null;
 }
 
-export async function seedTenantMasterData(tenantId) {
-  const tenant = await loadTenantForMasterData(tenantId);
+function applySeedCodeDescription(existing, seed) {
+  let changed = false;
+  if (!String(existing.code || "").trim() && seed.code) {
+    existing.code = seed.code;
+    changed = true;
+  }
+  if (!String(existing.description || "").trim() && seed.description) {
+    existing.description = seed.description;
+    changed = true;
+  }
+  return changed;
+}
+
+export async function seedTenantMasterData(tenantId, { session } = {}) {
+  const tenant = await loadTenantForMasterData(tenantId, session);
   if (!tenant) return [];
 
   let changed = false;
@@ -77,14 +93,20 @@ export async function seedTenantMasterData(tenantId) {
     if (!seeds.length) continue;
 
     const items = ensureArray(tenant, category.tenantField);
-    for (const [index, name] of seeds.entries()) {
-      const existing = findItemByName(items, name);
+    for (const [index, rawSeed] of seeds.entries()) {
+      const seed = normalizeMasterSeed(rawSeed);
+      if (!seed.name) continue;
+
+      const existing = findItemByName(items, seed.name);
       if (existing) {
+        if (applySeedCodeDescription(existing, seed)) changed = true;
         created.push(normalizeMasterDataItem(existing, category.key, tenantId));
         continue;
       }
       items.push({
-        name,
+        name: seed.name,
+        code: seed.code,
+        description: seed.description,
         status: "active",
         sortOrder: index,
       });
@@ -95,7 +117,7 @@ export async function seedTenantMasterData(tenantId) {
     }
   }
 
-  if (changed) await tenant.save();
+  if (changed) await tenant.save(session ? { session } : undefined);
   return created;
 }
 
@@ -157,8 +179,6 @@ export async function migrateLegacyTenantMasterData() {
 export async function listMasterDataItems(tenantId, category, { status = null } = {}) {
   if (!isValidMasterCategory(category)) return null;
 
-  await seedTenantMasterData(tenantId);
-
   const tenant = await loadTenantForMasterData(tenantId);
   if (!tenant) return [];
 
@@ -202,9 +222,17 @@ export async function createMasterDataItem(tenantId, payload) {
 
   if (findItemByName(items, name)) return { error: "MASTER_DATA_NAME_EXISTS" };
 
+  const code = String(payload.code || "").trim();
+  if (code) {
+    const dupCode = items.find(
+      (entry) => String(entry.code || "").trim().toLowerCase() === code.toLowerCase()
+    );
+    if (dupCode) return { error: "MASTER_DATA_CODE_EXISTS" };
+  }
+
   items.push({
     name,
-    code: String(payload.code || "").trim(),
+    code,
     description: String(payload.description || "").trim(),
     status: payload.status === "inactive" ? "inactive" : "active",
     sortOrder: Number.isFinite(Number(payload.sortOrder)) ? Number(payload.sortOrder) : items.length,
@@ -234,7 +262,18 @@ export async function updateMasterDataItem(tenantId, id, updates) {
     if (duplicate) return { error: "MASTER_DATA_NAME_EXISTS" };
     item.name = name;
   }
-  if (updates.code !== undefined) item.code = String(updates.code).trim();
+  if (updates.code !== undefined) {
+    const code = String(updates.code).trim();
+    if (code) {
+      const dupCode = items.find(
+        (entry) =>
+          String(entry.code || "").trim().toLowerCase() === code.toLowerCase() &&
+          String(entry._id) !== String(id)
+      );
+      if (dupCode) return { error: "MASTER_DATA_CODE_EXISTS" };
+    }
+    item.code = code;
+  }
   if (updates.description !== undefined) item.description = String(updates.description).trim();
   if (updates.status !== undefined) {
     item.status = updates.status === "inactive" ? "inactive" : "active";
@@ -251,13 +290,25 @@ export async function deleteMasterDataItem(tenantId, id) {
   const found = await getMasterDataItemById(tenantId, id);
   if (!found) return { error: "MASTER_DATA_NOT_FOUND" };
 
-  const { category, tenant } = found;
+  const { category, item, tenant } = found;
   const inUse = await countMasterDataUsage(tenantId, category, id);
   if (inUse > 0) return { error: "MASTER_DATA_IN_USE" };
 
   const field = getTenantFieldForCategory(category);
   tenant[field] = ensureArray(tenant, field).filter((entry) => String(entry._id) !== String(id));
   await tenant.save();
+
+  // Keep legacy collection in sync so startup/migrate cannot resurrect deleted items.
+  try {
+    await TenantMasterData.deleteMany({
+      tenantId,
+      category,
+      $or: [{ _id: id }, { name: item.name }],
+    });
+  } catch {
+    // Legacy collection may not exist — ignore.
+  }
+
   return { ok: true };
 }
 

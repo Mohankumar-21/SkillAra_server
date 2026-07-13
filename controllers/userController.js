@@ -145,7 +145,10 @@ export async function listUsers(req, res, next) {
 
 export async function createUser(req, res, next) {
   try {
-    const { name, email, password, roleId, invitationStatus, phone, employeeId, departmentId, designationId, profilePhoto } = req.body;
+    const { name, password, roleId, invitationStatus, phone, employeeId, departmentId, designationId, profilePhoto } = req.body;
+    const email = String(req.body?.email || "")
+      .trim()
+      .toLowerCase();
     const tenantId = req.tenantId;
 
     const resolved = await resolveCreatableRole({ tenantId, roleId, actor: req.user });

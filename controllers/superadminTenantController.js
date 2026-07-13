@@ -140,7 +140,7 @@ export async function createTenantWithAdmin(req, res, next) {
 
 
 
-    if (!subdomain || !SUBDOMAIN_RE.test(subdomain)) {
+    if (!subdomain || subdomain.length < 3 || subdomain.length > 15 || !SUBDOMAIN_RE.test(subdomain) || /--/.test(subdomain)) {
 
       return sendError(res, "TENANT_SUBDOMAIN_INVALID", 400);
 
@@ -149,24 +149,59 @@ export async function createTenantWithAdmin(req, res, next) {
 
 
     if (!adminEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
-
       return sendError(res, "VALIDATION_EMAIL_INVALID", 400);
-
     }
 
+    if (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
+      return sendError(res, "VALIDATION_EMAIL_INVALID", 400);
+    }
 
+    const rootDomain = process.env.ROOT_DOMAIN || "skillara.com";
+    const domain = String(body.domain || `${subdomain}.${rootDomain}`).trim().toLowerCase();
+    const tenantEmail = (contactEmail || adminEmail).toLowerCase();
 
-    const existingTenant = await Tenant.findOne({
-
-      $or: [{ subdomain }, { sub_domain: subdomain }],
-
+    /**
+     * Email rules on tenant create:
+     * 1) Tenant contact email — unique across Tenant.email
+     * 2) Owner User email — unique per tenant only (same email allowed in other tenants)
+     * 3) Subdomain / domain — unique
+     */
+    const subdomainConflict = await Tenant.findOne({
+      $or: [{ subdomain }, { sub_domain: subdomain }, { domain }],
     });
-
-    if (existingTenant) {
-
+    if (subdomainConflict) {
       return sendError(res, "TENANT_SUBDOMAIN_TAKEN", 409);
-
     }
+
+    const contactEmailConflict = await Tenant.findOne({ email: tenantEmail });
+    if (contactEmailConflict) {
+      return sendError(res, "TENANT_EMAIL_IN_USE", 409, {
+        detail: "Organization contact email must be unique across all organizations.",
+        email: tenantEmail,
+      });
+    }
+
+    // Owner email may already exist as a User in another tenant — allowed (workspace-scoped login).
+    // Only block if that email is already another org's Tenant contact email AND differs from
+    // this org's contact (rare mismatch: owner email taken as someone else's billing contact).
+    if (adminEmail !== tenantEmail) {
+      const ownerAsOtherTenantContact = await Tenant.findOne({ email: adminEmail });
+      if (ownerAsOtherTenantContact) {
+        const conflictName =
+          ownerAsOtherTenantContact.name ||
+          ownerAsOtherTenantContact.tenant_name ||
+          ownerAsOtherTenantContact.subdomain ||
+          ownerAsOtherTenantContact.sub_domain ||
+          "another organization";
+        return sendError(res, "TENANT_OWNER_EMAIL_IN_USE", 409, {
+          detail: `Owner email is already the contact email for "${conflictName}". Use the same email as this org's contact, or a different owner email.`,
+          email: adminEmail,
+          conflictTenant: conflictName,
+        });
+      }
+    }
+
+    // Informational: same person can own multiple orgs; no block on cross-tenant User email.
 
 
 
@@ -224,12 +259,6 @@ export async function createTenantWithAdmin(req, res, next) {
 
 
     const temporaryPassword = generateTemporaryPassword();
-
-    const rootDomain = process.env.ROOT_DOMAIN || "skillara.com";
-
-    const domain = body.domain || `${subdomain}.${rootDomain}`;
-
-
 
     session.startTransaction();
 
@@ -293,9 +322,14 @@ export async function createTenantWithAdmin(req, res, next) {
 
 
 
-    await seedNewTenantDefaults(tenant._id);
-
-    const ownerRole = await getTenantRoleBySlug(tenant._id, "organization-owner");
+    await seedNewTenantDefaults(tenant._id, { session });
+    const ownerRole = await getTenantRoleBySlug(tenant._id, "organization-owner", { session });
+    if (!ownerRole?._id) {
+      await session.abortTransaction();
+      return sendError(res, "GENERAL_UNKNOWN", 500, {
+        detail: "Failed to provision the organization owner role. Please try again.",
+      });
+    }
 
     const passwordHash = await hashPassword(temporaryPassword);
 
@@ -315,7 +349,7 @@ export async function createTenantWithAdmin(req, res, next) {
 
           passwordHash,
 
-          roleId: ownerRole?._id || null,
+          roleId: ownerRole._id,
 
           status: "active",
 
@@ -338,72 +372,71 @@ export async function createTenantWithAdmin(req, res, next) {
 
 
     const loginUrl = buildTenantLoginUrl(subdomain);
-    const emailResult = await sendTenantAdminWelcomeEmail({
-      to: adminEmail,
-      tenantName: name,
-      adminName: adminName || adminEmail,
-      loginUrl,
-      temporaryPassword,
-    });
+    const sendWelcomeEmail = body.sendWelcomeEmail !== false;
+    let emailResult = { sent: false, mode: "skipped" };
 
-
-
-    await writeAuditLog({
-
-      actorId: req.user?.id,
-
-      actorType: "superadmin",
-
-      action: "tenant.created",
-
-      targetId: tenant._id,
-
-      tenantId: tenant._id,
-
-      ip: req.ip,
-
-      metadata: { subdomain: tenant.subdomain, adminEmail },
-
-    });
-
-
-
-    if (!emailResult.sent) {
-      logger.info("[tenant-admin:credentials] Email not sent — share with owner manually", {
-        adminEmail,
+    if (sendWelcomeEmail) {
+      emailResult = await sendTenantAdminWelcomeEmail({
+        to: adminEmail,
+        tenantName: name,
+        adminName: adminName || adminEmail,
         loginUrl,
         temporaryPassword,
       });
     }
 
+    await writeAuditLog({
+      actorId: req.user?.id,
+      actorType: "superadmin",
+      action: "tenant.created",
+      targetId: tenant._id,
+      tenantId: tenant._id,
+      ip: req.ip,
+      metadata: {
+        subdomain: tenant.subdomain,
+        adminEmail,
+        welcomeEmailSent: emailResult.sent === true,
+        welcomeEmailMode: emailResult.mode || null,
+      },
+    });
+
+    if (sendWelcomeEmail && !emailResult.sent) {
+      logger.info("[tenant-admin:credentials] Email not sent — share with owner manually", {
+        adminEmail,
+        loginUrl,
+        temporaryPassword,
+        mode: emailResult.mode,
+        error: emailResult.error || null,
+      });
+    }
+
     const populated = tenant.toObject();
 
-
+    const emailFailed = sendWelcomeEmail && emailResult.sent !== true;
+    const successMessage = !sendWelcomeEmail
+      ? "Organization created. Welcome email was skipped."
+      : emailResult.sent
+        ? "Organization created. A welcome email with a temporary password was sent to the owner."
+        : emailResult.mode === "misconfigured" || emailResult.mode === "log"
+          ? "Organization created. Welcome email was not sent — configure SMTP_HOST, SMTP_USER, and SMTP_PASS on the server."
+          : "Organization created. Welcome email could not be sent — check SMTP settings and server logs.";
 
     return res.status(201).send(
-
       prepareResponseMsg(
-
         {
-
           tenant: normalizeTenantForApi(populated, planLabel),
-
           tenantAdmin: toPublicUser(adminUser),
-
           tenantAdminUser: toPublicUser(adminUser),
           welcomeEmailSent: emailResult.sent === true,
+          welcomeEmailMode: emailResult.mode || null,
+          welcomeEmailError: emailResult.error || null,
           loginUrl,
-          ...(!emailResult.sent ? { temporaryPassword } : {}),
+          ...(emailFailed || !sendWelcomeEmail ? { temporaryPassword } : {}),
         },
         true,
-        emailResult.sent
-          ? "Organization created. A welcome email with a temporary password was sent to the owner."
-          : "Organization created. Welcome email could not be sent — check SMTP settings and server logs.",
-
+        successMessage,
         201
-
       )
-
     );
 
   } catch (err) {
