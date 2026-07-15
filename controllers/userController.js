@@ -382,7 +382,7 @@ export async function deleteUser(req, res, next) {
       return sendError(res, "USER_SELF_DELETE", 400);
     }
 
-    await User.updateOne({ _id: target._id }, { $set: { status: "disabled" } });
+    await User.deleteOne({ _id: target._id });
     await syncTenantUserCount(req.tenantId);
 
     await writeAuditLog({
@@ -397,7 +397,7 @@ export async function deleteUser(req, res, next) {
 
     return res
       .status(200)
-      .send(prepareResponseMsg({ ok: true }, true, "User disabled successfully", 200));
+      .send(prepareResponseMsg({ ok: true }, true, "User deleted successfully", 200));
   } catch (err) {
     return next(err);
   }

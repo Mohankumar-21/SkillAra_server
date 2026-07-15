@@ -180,7 +180,11 @@ export async function deleteMasterDataItemHandler(req, res, next) {
     const result = await deleteMasterDataItem(req.tenantId, req.params.id);
     if (result.error) {
       const status = result.error === "MASTER_DATA_NOT_FOUND" ? 404 : result.error === "MASTER_DATA_IN_USE" ? 409 : 400;
-      return sendError(res, result.error, status);
+      return sendError(res, result.error, status, {
+        detail: result.detail,
+        assignedUsers: result.assignedUsers || [],
+        assignedCount: result.assignedCount || 0,
+      });
     }
 
     return res
