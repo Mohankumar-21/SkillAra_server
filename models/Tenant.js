@@ -93,6 +93,12 @@ const tenantSchema = new mongoose.Schema(
       type: [embeddedLookupSchema],
       default: () => [],
     },
+    /** Prevents tenant master data defaults from being re-seeded after initial provisioning. */
+    masterDataInitialized: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
   },
   {
     timestamps: { createdAt: true, updatedAt: true },

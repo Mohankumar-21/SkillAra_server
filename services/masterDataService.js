@@ -68,6 +68,20 @@ function getCategoryForItem(tenant, id) {
   return null;
 }
 
+function formatAssignedUsers(users, totalCount) {
+  const names = users
+    .map((user) => {
+      const name = String(user.name || user.email || "User").trim();
+      return user.email ? `${name} (${user.email})` : name;
+    })
+    .filter(Boolean);
+
+  const shown = names.slice(0, 3);
+  const remaining = Math.max(0, totalCount - shown.length);
+  const suffix = remaining > 0 ? `, and ${remaining} more` : "";
+  return shown.length ? `Assigned to ${totalCount} user(s): ${shown.join(", ")}${suffix}.` : "This item is assigned to users and cannot be deleted.";
+}
+
 function applySeedCodeDescription(existing, seed) {
   let changed = false;
   if (!String(existing.code || "").trim() && seed.code) {
@@ -84,6 +98,8 @@ function applySeedCodeDescription(existing, seed) {
 export async function seedTenantMasterData(tenantId, { session } = {}) {
   const tenant = await loadTenantForMasterData(tenantId, session);
   if (!tenant) return [];
+
+  if (tenant.masterDataInitialized === true) return [];
 
   let changed = false;
   const created = [];
@@ -117,7 +133,11 @@ export async function seedTenantMasterData(tenantId, { session } = {}) {
     }
   }
 
-  if (changed) await tenant.save(session ? { session } : undefined);
+  tenant.masterDataInitialized = true;
+  if (changed || tenant.isModified("masterDataInitialized")) {
+    await tenant.save(session ? { session } : undefined);
+  }
+
   return created;
 }
 
@@ -291,12 +311,39 @@ export async function deleteMasterDataItem(tenantId, id) {
   if (!found) return { error: "MASTER_DATA_NOT_FOUND" };
 
   const { category, item, tenant } = found;
+  console.info("[master-data:delete] requested", {
+    tenantId: String(tenantId),
+    category,
+    id: String(id),
+    name: item.name,
+  });
+
   const inUse = await countMasterDataUsage(tenantId, category, id);
-  if (inUse > 0) return { error: "MASTER_DATA_IN_USE" };
+  if (inUse > 0) {
+    const cat = getMasterCategory(category);
+    const assignedUsers = cat?.userField
+      ? await User.find({ tenantId, [cat.userField]: id })
+          .select("name email status")
+          .sort({ name: 1 })
+          .lean()
+      : [];
+
+    return {
+      error: "MASTER_DATA_IN_USE",
+      assignedCount: inUse,
+      assignedUsers,
+      detail: formatAssignedUsers(assignedUsers, inUse),
+    };
+  }
 
   const field = getTenantFieldForCategory(category);
-  tenant[field] = ensureArray(tenant, field).filter((entry) => String(entry._id) !== String(id));
-  await tenant.save();
+  await Tenant.updateOne(
+    { _id: tenantId },
+    {
+      $pull: { [field]: { _id: item._id } },
+      $set: { masterDataInitialized: true },
+    }
+  );
 
   // Keep legacy collection in sync so startup/migrate cannot resurrect deleted items.
   try {
@@ -308,6 +355,13 @@ export async function deleteMasterDataItem(tenantId, id) {
   } catch {
     // Legacy collection may not exist — ignore.
   }
+
+  console.info("[master-data:delete] completed", {
+    tenantId: String(tenantId),
+    category,
+    id: String(id),
+    name: item.name,
+  });
 
   return { ok: true };
 }
