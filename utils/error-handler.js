@@ -19,13 +19,20 @@ export const errorHandler = (err, req, res, next) => {
 
   let { statusCode, errorKey, errorMessage, data } = normalizeError(err);
 
-  if (!err?.isOperational || statusCode >= 500) {
-    statusCode = statusCode >= 500 ? httpStatus.INTERNAL_SERVER_ERROR : statusCode;
-    if (statusCode >= 500) {
-      errorKey = errorKey === "DB_UNAVAILABLE" ? "DB_UNAVAILABLE" : "GENERAL_UNKNOWN";
-      errorMessage = getErrorMessage(errorKey);
-      data = {};
-    }
+  /**
+   * Unexpected 5xx failures are masked so internals never reach the client.
+   * Operational errors (AppError, and the dependency-outage keys normalizeError
+   * produces) carry curated messages and keep their own status — otherwise a
+   * deliberate 503 "storage unavailable" would surface as an opaque 500.
+   */
+  const isOperational =
+    Boolean(err?.isOperational) || errorKey === "DB_UNAVAILABLE";
+
+  if (!isOperational && statusCode >= 500) {
+    statusCode = httpStatus.INTERNAL_SERVER_ERROR;
+    errorKey = "GENERAL_UNKNOWN";
+    errorMessage = getErrorMessage(errorKey);
+    data = {};
   }
 
   res.locals.errorMessage = errorMessage;

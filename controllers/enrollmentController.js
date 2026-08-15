@@ -1,7 +1,9 @@
 import Enrollment from "../models/Enrollment.js";
 import Course from "../models/Course.js";
 import UserProgress from "../models/UserProgress.js";
-import { prepareResponseMsg } from "../utils/helper.js";
+import User from "../models/User.js";
+import { prepareResponseMsg, sendError } from "../utils/helper.js";
+import { getActor, canModerateCourses } from "../utils/actor.js";
 import { getCourseLessonCount } from "../utils/progress.js";
 
 function toPublicEnrollment(doc, extras = {}) {
@@ -22,7 +24,8 @@ function toPublicEnrollment(doc, extras = {}) {
 export async function enrollInCourse(req, res, next) {
   try {
     const { courseId } = req.body;
-    const userId = req.user._id;
+    const actor = getActor(req);
+    const userId = actor.id;
     const tenantId = req.tenantId;
 
     const course = await Course.findOne({
@@ -99,7 +102,7 @@ export async function enrollInCourse(req, res, next) {
 export async function getMyEnrollments(req, res, next) {
   try {
     const enrollments = await Enrollment.find({
-      userId: req.user._id,
+      userId: getActor(req).id,
       tenantId: req.tenantId,
       status: { $in: ["ACTIVE", "COMPLETED"] },
     })
@@ -107,7 +110,7 @@ export async function getMyEnrollments(req, res, next) {
       .sort({ enrolledAt: -1 });
 
     const progressList = await UserProgress.find({
-      userId: req.user._id,
+      userId: getActor(req).id,
       tenantId: req.tenantId,
     });
 
@@ -138,8 +141,8 @@ export async function getCourseEnrollments(req, res, next) {
       return res.status(404).send(prepareResponseMsg({}, false, "Course not found", 404));
     }
 
-    const isTutor = req.user.role === "TUTOR";
-    if (isTutor && String(course.instructorId) !== String(req.user._id)) {
+    const actor = getActor(req);
+    if (actor.isInstructor && String(course.instructorId) !== String(actor.id)) {
       return res.status(403).send(prepareResponseMsg({}, false, "Forbidden", 403));
     }
 
@@ -183,9 +186,9 @@ export async function dropEnrollment(req, res, next) {
       return res.status(404).send(prepareResponseMsg({}, false, "Enrollment not found", 404));
     }
 
-    const isOwner = String(enrollment.userId) === String(req.user._id);
-    const isAdmin = req.user.role === "TENANT_ADMIN";
-    if (!isOwner && !isAdmin) {
+    const actor = getActor(req);
+    const isOwner = String(enrollment.userId) === String(actor.id);
+    if (!isOwner && !canModerateCourses(actor)) {
       return res.status(403).send(prepareResponseMsg({}, false, "Forbidden", 403));
     }
 
@@ -203,6 +206,101 @@ export async function dropEnrollment(req, res, next) {
     return res
       .status(200)
       .send(prepareResponseMsg({ ok: true }, true, "Enrollment dropped", 200));
+  } catch (err) {
+    return next(err);
+  }
+}
+
+/**
+ * POST /api/enrollments/bulk
+ * Enrol existing tenant users into a course in one action — the "admin adds students
+ * and they are already enrolled" path, as opposed to learners enrolling themselves.
+ *
+ * Allowed for tenant staff, and for an instructor on their own course. Users who are
+ * already enrolled are reported as skipped rather than failing the whole request, so
+ * the action is safe to repeat.
+ */
+export async function bulkEnrollStudents(req, res, next) {
+  try {
+    const actor = getActor(req);
+    const tenantId = req.tenantId;
+    const { courseId, userIds } = req.body;
+
+    const course = await Course.findOne({ _id: courseId, tenantId });
+    if (!course) {
+      return sendError(res, "COURSE_NOT_FOUND", 404);
+    }
+
+    const isOwner = String(course.instructorId) === String(actor.id);
+    if (!canModerateCourses(actor) && !isOwner) {
+      return sendError(res, "COURSE_FORBIDDEN", 403);
+    }
+
+    // Only users that genuinely belong to this tenant — never trust the id list alone.
+    const users = await User.find({
+      _id: { $in: userIds },
+      tenantId,
+      status: { $ne: "disabled" },
+    }).select("_id name email");
+
+    const foundIds = new Set(users.map((u) => String(u._id)));
+    const notFound = userIds.filter((id) => !foundIds.has(String(id)));
+
+    const existing = await Enrollment.find({
+      courseId,
+      tenantId,
+      userId: { $in: users.map((u) => u._id) },
+    }).select("userId status");
+    const existingMap = new Map(existing.map((e) => [String(e.userId), e]));
+
+    const enrolled = [];
+    const reactivated = [];
+    const skipped = [];
+
+    for (const user of users) {
+      const prior = existingMap.get(String(user._id));
+
+      if (prior && prior.status !== "DROPPED") {
+        skipped.push({ id: String(user._id), email: user.email });
+        continue;
+      }
+
+      if (prior) {
+        await Enrollment.updateOne(
+          { _id: prior._id },
+          { $set: { status: "ACTIVE", enrolledAt: new Date(), completedAt: null } }
+        );
+        reactivated.push({ id: String(user._id), email: user.email });
+      } else {
+        await Enrollment.create({
+          userId: user._id,
+          courseId,
+          tenantId,
+          status: "ACTIVE",
+        });
+        enrolled.push({ id: String(user._id), email: user.email });
+      }
+
+      await UserProgress.findOneAndUpdate(
+        { userId: user._id, courseId, tenantId },
+        { $setOnInsert: { completedLessons: [], quizScores: [], assignmentScores: [] } },
+        { upsert: true }
+      );
+    }
+
+    const added = enrolled.length + reactivated.length;
+    if (added > 0) {
+      await Course.updateOne({ _id: courseId }, { $inc: { "stats.enrolledCount": added } });
+    }
+
+    return res.status(200).send(
+      prepareResponseMsg(
+        { enrolled, reactivated, skipped, notFound, addedCount: added },
+        true,
+        added === 1 ? "1 student enrolled" : `${added} students enrolled`,
+        200
+      )
+    );
   } catch (err) {
     return next(err);
   }

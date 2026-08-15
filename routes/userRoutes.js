@@ -69,7 +69,7 @@ function validate(schema) {
 }
 
 function canAccessUser(req, res, next) {
-  if (isTenantAdminUser(req.user) || req.user?.role === "ORG_ADMIN") {
+  if (isTenantAdminUser(req.user) || req.user?.role === "ORG_ADMIN" || req.user?.role === "SUPER_ADMIN") {
     return next();
   }
   if (String(req.params.id) === String(req.user._id || req.user.id)) return next();
@@ -80,7 +80,7 @@ router.get(
   "/",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
+  requireRole("TENANT_ADMIN", "ORG_ADMIN", "SUPER_ADMIN"),
   requireTenant,
   listUsers
 );
@@ -98,7 +98,7 @@ router.post(
   "/",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
+  requireRole("TENANT_ADMIN", "ORG_ADMIN", "SUPER_ADMIN"),
   requireTenant,
   checkPlanLimits({ resource: "users" }),
   validate(createUserSchema),
@@ -120,7 +120,7 @@ router.patch(
   "/:id/status",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
+  requireRole("TENANT_ADMIN", "ORG_ADMIN", "SUPER_ADMIN"),
   requireTenant,
   validate(statusSchema),
   updateUserStatus
@@ -130,7 +130,7 @@ router.delete(
   "/:id",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
+  requireRole("TENANT_ADMIN", "ORG_ADMIN", "SUPER_ADMIN"),
   requireTenant,
   deleteUser
 );

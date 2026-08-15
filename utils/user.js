@@ -126,15 +126,28 @@ export function toPublicUser(user, ctx = null) {
     profilePhoto: doc.profilePhoto || "",
     isDefaultPassword,
     isTenantAdmin,
+    /**
+     * Effective permission map ({ moduleId: [actions] }) from the user's tenant role.
+     * The client uses this to decide which navigation and controls to render — the
+     * server still enforces every action independently. Only attached for the
+     * signed-in user's own session payload, so user listings stay small.
+     */
+    ...(ctx?.includePermissions ? { permissions: roleDoc?.permissions || {} } : {}),
     createdAt: doc.createdAt,
   };
 }
 
-export async function toPublicUsers(users, tenantId) {
+/**
+ * @param {Array} users
+ * @param {string} tenantId
+ * @param {{includePermissions?: boolean}} [options] pass includePermissions for
+ *   session payloads (/login, /me) so the client can render role-aware navigation.
+ */
+export async function toPublicUsers(users, tenantId, options = {}) {
   const tenant = await Tenant.findById(tenantId).select("roles");
   const roleMap = new Map((tenant?.roles || []).map((r) => [String(r._id), r]));
   const { map: masterMap } = await attachMasterLabelsToUsers(users, tenantId);
-  const ctx = { roleMap, masterMap };
+  const ctx = { roleMap, masterMap, includePermissions: Boolean(options.includePermissions) };
   return users.map((u) => toPublicUser(u, ctx));
 }
 

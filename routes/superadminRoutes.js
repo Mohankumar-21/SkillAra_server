@@ -14,6 +14,13 @@ import {
   updatePlatformRole,
 } from "../controllers/roleController.js";
 import {
+  listPlatformCourses,
+  getPlatformCourseStats,
+  blockPlatformCourse,
+  unblockPlatformCourse,
+  unpublishPlatformCourse,
+} from "../controllers/platformCourseController.js";
+import {
   createOrganizationType,
   deleteOrganizationType,
   listOrganizationTypes,
@@ -201,6 +208,42 @@ router.delete(
   requireSuperadmin,
   validateObjectIdParam,
   deleteOrganizationType
+);
+
+/* ------------------------------ course oversight ------------------------------
+ * Cross-tenant catalog visibility and platform-level takedown. Handlers in
+ * platformCourseController.js query without a tenant filter, so requireSuperadmin
+ * on every route here is the only thing keeping that scope safe.
+ * ---------------------------------------------------------------------------- */
+
+const blockCourseSchema = z.object({ reason: z.string().trim().min(3).max(500) });
+
+router.get("/courses", requireDb, authenticate, requireSuperadmin, listPlatformCourses);
+router.get("/courses/stats", requireDb, authenticate, requireSuperadmin, getPlatformCourseStats);
+router.post(
+  "/courses/:id/block",
+  requireDb,
+  authenticate,
+  requireSuperadmin,
+  validateObjectIdParam,
+  validateBody(blockCourseSchema),
+  blockPlatformCourse
+);
+router.post(
+  "/courses/:id/unblock",
+  requireDb,
+  authenticate,
+  requireSuperadmin,
+  validateObjectIdParam,
+  unblockPlatformCourse
+);
+router.post(
+  "/courses/:id/unpublish",
+  requireDb,
+  authenticate,
+  requireSuperadmin,
+  validateObjectIdParam,
+  unpublishPlatformCourse
 );
 
 export default router;

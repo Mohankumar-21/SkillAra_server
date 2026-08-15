@@ -8,6 +8,13 @@ const moduleSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    /** Denormalized so module queries can be tenant-filtered without joining upward. */
+    tenantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Tenant",
+      required: true,
+      index: true,
+    },
     title: {
       type: String,
       required: true,
@@ -33,6 +40,8 @@ const moduleSchema = new mongoose.Schema(
     collection: "Module",
   }
 );
+
+moduleSchema.index({ courseId: 1, order: 1 });
 
 const Module = mongoose.model("Module", moduleSchema);
 export default Module;

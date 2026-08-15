@@ -102,12 +102,33 @@ export const ERROR_MESSAGES = {
   OWNERSHIP_REJECT_REASON_REQUIRED: "Please provide a reason for rejecting this request.",
 
   COURSE_NOT_FOUND: "Course not found.",
+  COURSE_FORBIDDEN: "You can only manage courses you created.",
+  COURSE_BLOCKED: "This course has been blocked by an administrator.",
+  COURSE_ALREADY_PUBLISHED: "This course is already published.",
+  COURSE_EMPTY_CANNOT_PUBLISH:
+    "Add at least one module with a lesson before publishing this course.",
+  COURSE_INVALID_ID: "Invalid course identifier.",
+  COURSE_BLOCK_REASON_REQUIRED: "Please provide a reason for blocking this course.",
+  MODULE_NOT_FOUND: "Module not found.",
+  MODULE_ORDER_INVALID: "The reorder request must include every module in this course exactly once.",
   ENROLLMENT_NOT_FOUND: "Enrollment not found.",
+  ENROLLMENT_REQUIRED: "Enroll in this course to access this lesson.",
   QUIZ_NOT_FOUND: "Quiz not found.",
   LESSON_NOT_FOUND: "Lesson not found.",
+  LESSON_ORDER_INVALID: "The reorder request must include every lesson in this module exactly once.",
+  LESSON_NO_CONTENT: "This lesson has no uploaded file yet.",
 
   UPLOAD_FILE_TYPE_INVALID: "This file type is not allowed.",
   UPLOAD_FILE_TOO_LARGE: "The file is too large. Please choose a smaller file.",
+  UPLOAD_FILE_UNEXPECTED: "Unexpected file upload. Send exactly one file in the 'file' field.",
+  UPLOAD_FILE_REQUIRED: "Please choose a file to upload.",
+  UPLOAD_NOT_COMPLETED: "The upload did not finish. Please try uploading the file again.",
+  STORAGE_NOT_CONFIGURED:
+    "File storage is not configured on the server. Contact your administrator.",
+  STORAGE_CREDENTIALS_REJECTED:
+    "File storage rejected the server's credentials. Contact your administrator.",
+  STORAGE_KEY_INVALID: "Invalid file reference.",
+  STORAGE_UNAVAILABLE: "File storage is temporarily unavailable. Please try again shortly.",
   AI_SERVICE_ERROR: "We couldn't complete the AI request. Please try again later.",
 
   VALIDATION_EMAIL_INVALID: "Please enter a valid email address.",

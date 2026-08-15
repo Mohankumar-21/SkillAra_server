@@ -232,7 +232,7 @@ export async function updateUser(req, res, next) {
       return sendError(res, "USER_NOT_FOUND", 404);
     }
 
-    const isAdmin = isTenantAdminUser(req.user);
+    const isAdmin = isTenantAdminUser(req.user) || req.user?.role === "SUPER_ADMIN";
     const isSelf = String(target._id) === String(req.user._id || req.user.id);
 
     if (!isAdmin && !isSelf) {
@@ -357,7 +357,10 @@ export async function updateMyProfile(req, res, next) {
 
     const updated = await User.findByIdAndUpdate(req.user._id || req.user.id, { $set: updates }, { new: true });
 
-    const [publicUser] = await toPublicUsers([updated], req.tenantId);
+    // Self-service profile response feeds the session, so include permissions like /me does.
+    const [publicUser] = await toPublicUsers([updated], req.tenantId, {
+      includePermissions: true,
+    });
 
     return res
       .status(200)
