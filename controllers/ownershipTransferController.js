@@ -4,6 +4,7 @@ import User from "../models/User.js";
 import Tenant from "../models/Tenant.js";
 import Session from "../models/Session.js";
 import { prepareResponseMsg, sendError } from "../utils/helper.js";
+import { getActor } from "../utils/actor.js";
 import { toPublicUser, isTenantAdminUser } from "../utils/user.js";
 import { getTenantRoleBySlug } from "../services/roleService.js";
 import { auditFromRequest } from "../services/auditService.js";
@@ -94,7 +95,7 @@ export async function createOwnershipTransferRequest(req, res, next) {
 
     const { targetUserId, reason = "" } = req.body;
 
-    if (String(targetUserId) === String(req.user._id)) {
+    if (String(targetUserId) === String(getActor(req).id)) {
       return sendError(res, "OWNERSHIP_SELF", 400);
     }
 
@@ -116,7 +117,7 @@ export async function createOwnershipTransferRequest(req, res, next) {
 
     const request = await OwnershipTransferRequest.create({
       tenantId: req.tenantId,
-      requestedBy: req.user._id,
+      requestedBy: getActor(req).id,
       targetUserId: target._id,
       previousOwnerNewRole: PREVIOUS_OWNER_ROLE,
       reason: reason.trim(),
@@ -198,7 +199,7 @@ export async function cancelOwnershipTransferRequest(req, res, next) {
     const request = await OwnershipTransferRequest.findOne({
       _id: req.params.id,
       tenantId: req.tenantId,
-      requestedBy: req.user._id,
+      requestedBy: getActor(req).id,
       status: "PENDING",
     });
 
@@ -330,7 +331,7 @@ export async function approveOwnershipTransferRequest(req, res, next) {
       );
 
       request.status = "APPROVED";
-      request.reviewedBy = req.user._id;
+      request.reviewedBy = getActor(req).id;
       request.reviewedAt = new Date();
       request.reviewNote = reviewNote.trim();
       request.appliedPreviousOwnerNewRole = PREVIOUS_OWNER_ROLE;
@@ -408,7 +409,7 @@ export async function rejectOwnershipTransferRequest(req, res, next) {
     }
 
     request.status = "REJECTED";
-    request.reviewedBy = req.user._id;
+    request.reviewedBy = getActor(req).id;
     request.reviewedAt = new Date();
     request.reviewNote = reviewNote.trim();
     await request.save();

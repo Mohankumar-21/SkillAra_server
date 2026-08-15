@@ -437,7 +437,7 @@ router.post("/logout", requireDb, async (req, res) => {
 
 router.post("/logout-all", requireDb, requireAuth, async (req, res) => {
   await Session.updateMany(
-    { userId: req.user._id, revokedAt: null },
+    { userId: req.user._id || req.user.id, revokedAt: null },
     { $set: { revokedAt: new Date(), revokedReason: "logout_all" } }
   );
   clearAuthCookies(req, res);

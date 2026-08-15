@@ -10,13 +10,14 @@ import { checkPlanLimits } from "../middlewares/checkPlanLimits.js";
 import Submission from "../models/Submission.js";
 import Lesson from "../models/Lesson.js";
 import { prepareResponseMsg, sendError } from "../utils/helper.js";
+import { getActor } from "../utils/actor.js";
 
 const router = express.Router();
 
 router.post("/submit", requireAuth, requireTenant, checkPlanLimits({ resource: "ai:evaluation" }), async (req, res, next) => {
   try {
     const { courseId, lessonId, content } = req.body;
-    const studentId = req.user._id;
+    const studentId = getActor(req).id;
     const tenantId = req.tenantId;
 
     const lesson = await Lesson.findById(lessonId);
@@ -58,7 +59,7 @@ router.post("/submit", requireAuth, requireTenant, checkPlanLimits({ resource: "
 router.get("/my-submissions", requireAuth, requireTenant, async (req, res, next) => {
   try {
     const submissions = await Submission.find({
-      studentId: req.user._id,
+      studentId: getActor(req).id,
       tenantId: req.tenantId,
     }).sort({ createdAt: -1 });
 

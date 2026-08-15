@@ -22,6 +22,10 @@ import { getRequestTenantId } from "../utils/requestTenant.js";
  */
 export function requireTenant(req, res, next) {
   if (req.user?.type === "superadmin" || req.user?.role === "SUPER_ADMIN") {
+    const tenantId = getRequestTenantId(req);
+    if (tenantId) {
+      req.tenantId = tenantId;
+    }
     return next();
   }
 

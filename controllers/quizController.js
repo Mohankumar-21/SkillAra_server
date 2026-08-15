@@ -7,6 +7,7 @@ import Enrollment from "../models/Enrollment.js";
 import UserProgress from "../models/UserProgress.js";
 import { generateQuiz, incrementAiUsage } from "../services/aiService.js";
 import { prepareResponseMsg } from "../utils/helper.js";
+import { getActor } from "../utils/actor.js";
 import { recalculateMastery } from "../utils/progress.js";
 
 function normalizeAiQuestions(raw) {
@@ -95,7 +96,7 @@ export async function createQuiz(req, res, next) {
       passingScore: passingScore ?? 60,
       status: status || "DRAFT",
       source: "MANUAL",
-      createdBy: req.user._id,
+      createdBy: getActor(req).id,
     });
 
     return res
@@ -140,7 +141,7 @@ export async function generateAndSaveQuiz(req, res, next) {
       passingScore: passingScore ?? 60,
       status: status || "PUBLISHED",
       source: "AI",
-      createdBy: req.user._id,
+      createdBy: getActor(req).id,
     });
 
     return res
@@ -208,7 +209,7 @@ export async function submitQuiz(req, res, next) {
     }
 
     const enrollment = await Enrollment.findOne({
-      userId: req.user._id,
+      userId: getActor(req).id,
       courseId: quiz.courseId,
       tenantId: req.tenantId,
       status: { $in: ["ACTIVE", "COMPLETED"] },
@@ -223,7 +224,7 @@ export async function submitQuiz(req, res, next) {
 
     const attempt = await QuizAttempt.create({
       quizId: quiz._id,
-      userId: req.user._id,
+      userId: getActor(req).id,
       courseId: quiz.courseId,
       lessonId: quiz.lessonId,
       tenantId: req.tenantId,
@@ -235,13 +236,13 @@ export async function submitQuiz(req, res, next) {
     });
 
     let progress = await UserProgress.findOne({
-      userId: req.user._id,
+      userId: getActor(req).id,
       courseId: quiz.courseId,
       tenantId: req.tenantId,
     });
     if (!progress) {
       progress = await UserProgress.create({
-        userId: req.user._id,
+        userId: getActor(req).id,
         courseId: quiz.courseId,
         tenantId: req.tenantId,
         completedLessons: [],
@@ -305,7 +306,7 @@ export async function getMyAttempts(req, res, next) {
     };
 
     if (req.user.role === "STUDENT") {
-      filter.userId = req.user._id;
+      filter.userId = getActor(req).id;
     }
 
     const attempts = await QuizAttempt.find(filter)

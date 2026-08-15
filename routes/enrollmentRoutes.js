@@ -10,6 +10,7 @@ import {
   getMyEnrollments,
   getCourseEnrollments,
   dropEnrollment,
+  bulkEnrollStudents,
 } from "../controllers/enrollmentController.js";
 import { requireAuth, requireRole, requireTenant } from "../middlewares/auth.js";
 import { prepareResponseMsg } from "../utils/helper.js";
@@ -17,8 +18,15 @@ import { requireDb } from "../utils/db-state.js";
 
 const router = express.Router();
 
+const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid id");
+
 const enrollSchema = z.object({
-  courseId: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid courseId"),
+  courseId: objectId,
+});
+
+const bulkEnrollSchema = z.object({
+  courseId: objectId,
+  userIds: z.array(objectId).min(1).max(500),
 });
 
 function validateBody(schema) {
@@ -36,14 +44,25 @@ function validateBody(schema) {
   };
 }
 
+/** Path 1 — a learner enrols themselves. */
 router.post(
   "/",
   requireDb,
   requireAuth,
-  requireRole("STUDENT"),
   requireTenant,
   validateBody(enrollSchema),
   enrollInCourse
+);
+
+/** Path 2 — staff or the course's instructor enrol students they have added. */
+router.post(
+  "/bulk",
+  requireDb,
+  requireAuth,
+  requireRole("TENANT_ADMIN", "ORG_ADMIN", "TUTOR"),
+  requireTenant,
+  validateBody(bulkEnrollSchema),
+  bulkEnrollStudents
 );
 
 router.get("/my", requireDb, requireAuth, requireTenant, getMyEnrollments);
@@ -52,7 +71,7 @@ router.get(
   "/course/:courseId",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "TUTOR"),
+  requireRole("TENANT_ADMIN", "ORG_ADMIN", "TUTOR"),
   requireTenant,
   getCourseEnrollments
 );

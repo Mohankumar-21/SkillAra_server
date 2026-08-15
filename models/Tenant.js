@@ -93,6 +93,15 @@ const tenantSchema = new mongoose.Schema(
       type: [embeddedLookupSchema],
       default: () => [],
     },
+    /**
+     * When true, anyone can create a learner account on this workspace's subdomain
+     * via POST /api/auth/signup. When false, students must be invited by an admin.
+     * Self-signup only ever produces the Student role — staff are always invited.
+     */
+    allowStudentSignup: {
+      type: Boolean,
+      default: true,
+    },
     /** Prevents tenant master data defaults from being re-seeded after initial provisioning. */
     masterDataInitialized: {
       type: Boolean,
