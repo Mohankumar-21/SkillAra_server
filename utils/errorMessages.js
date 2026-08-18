@@ -114,7 +114,28 @@ export const ERROR_MESSAGES = {
   ENROLLMENT_NOT_FOUND: "Enrollment not found.",
   ENROLLMENT_REQUIRED: "Enroll in this course to access this lesson.",
   QUIZ_NOT_FOUND: "Quiz not found.",
+  MOCK_TEST_NOT_FOUND: "Mock test not found.",
+  MOCK_TEST_NO_CONTENT: "This course has no lesson content yet to generate a mock test from.",
+  MOCK_TEST_TIME_EXPIRED: "This attempt was submitted after the allowed time window.",
   LESSON_NOT_FOUND: "Lesson not found.",
+
+  SLOT_TIME_INVALID: "End time must be after the start time.",
+  SLOT_NOT_FOUND: "Slot not found.",
+  SLOT_NOT_AVAILABLE: "This slot is no longer available.",
+  SLOT_SELF_BOOK: "You cannot book your own slot.",
+
+  QUESTION_NOT_FOUND: "Question not found.",
+  QUESTION_CLOSED: "This question is closed to new answers.",
+  ANSWER_NOT_FOUND: "Answer not found.",
+
+  MENTOR_PROFILE_NOT_FOUND: "Mentor profile not found.",
+  MENTORSHIP_SELF_REQUEST: "You cannot request mentorship from yourself.",
+  MENTORSHIP_REQUEST_EXISTS: "You already have a pending request with this mentor.",
+  MENTORSHIP_REQUEST_NOT_FOUND: "Mentorship request not found.",
+  MENTORSHIP_REQUEST_RESOLVED: "This request has already been responded to.",
+
+  LIVE_SESSION_NOT_FOUND: "Live session not found.",
+  LIVE_SESSION_CANCELLED: "This live session has been cancelled.",
   LESSON_ORDER_INVALID: "The reorder request must include every lesson in this module exactly once.",
   LESSON_NO_CONTENT: "This lesson has no uploaded file yet.",
 
