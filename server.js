@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import http from "http";
 import connectToDb from "./config/db.js";
 import logger from "./core/logger.js";
 import { createApp } from "./app.js";
@@ -8,6 +9,7 @@ import { seedDefaultOrganizationTypes } from "./services/platformMasterService.j
 import { backfillTenantAdmins } from "./utils/backfillTenantAdmins.js";
 import { backfillRolesAndPermissions } from "./utils/backfillRoles.js";
 import { syncTenantIndexes } from "./utils/syncTenantIndexes.js";
+import { attachSignaling } from "./services/webrtcSignaling.js";
 
 dotenv.config();
 
@@ -24,9 +26,13 @@ if (process.env.NODE_ENV !== "test") {
     .then(() => backfillRolesAndPermissions())
     .catch((err) => logger.error(err));
 
+  const httpServer = http.createServer(app);
+  attachSignaling(httpServer);
+
   const port = process.env.PORT || 5000;
-  app.listen(port, "0.0.0.0", () => {
+  httpServer.listen(port, "0.0.0.0", () => {
     console.log(`The server is listening on Port ${port} !`);
+    console.log(`WebRTC signaling is listening on /socket.io/webrtc`);
   });
 }
 

@@ -120,8 +120,17 @@ Base path: `/api`
 | `/courses` | Course catalog, authoring, media, moderation (see below) |
 | `/enrollments` | Self-enrolment and admin bulk enrolment (see below) |
 | `/progress`, `/quizzes`, `/assignments` | Learning |
+| `/mock-tests` | Course-scoped timed tests, manual or AI-generated |
+| `/session-slots` | Bookable time slots — mock interviews and mentorship scheduling (see below) |
+| `/forum` | Q&A: questions, answers, voting, moderation |
+| `/mentorship` | Mentor profiles, mentorship requests |
+| `/live-sessions` | Instructor-scheduled live classes, enrollment-gated join |
 | `/ai` | AI tutor, quiz generation, summarization |
 | `/ownership-transfers` | Organization owner transfer workflow |
+
+Realtime signaling for live video (mock interviews, mentorship, live classes) runs
+alongside the REST API as a Socket.io namespace at `/socket.io/webrtc` — see
+[Live video](../README.md#live-video-mock-interviews-mentorship-live-classes) in the root README.
 
 ### Course API (`/api/courses`)
 
@@ -174,6 +183,28 @@ Platform-scope oversight lives under `/api/superadmin/courses` (`GET /`, `GET /s
 `POST /:id/block`, `/:id/unblock`, `/:id/unpublish`) and is superadmin-only. Those
 handlers deliberately query **across** tenants, so `requireSuperadmin` on every route is
 the only thing bounding that scope.
+
+### Scheduling — mock interviews and mentorship (`/api/session-slots`)
+
+Mock interviews and mentorship sessions share one model, `BookableSlot`
+(`sessionType: MOCK_INTERVIEW | MENTORSHIP`), instead of two near-identical booking
+flows:
+
+| Method | Path | Who |
+|--------|------|-----|
+| `POST` | `/` | Instructor/mentor — publishes an open slot |
+| `GET` | `/` | Any tenant user — browse open slots (`?sessionType=&courseId=&hostId=`) |
+| `GET` | `/my` | Slots the caller hosts or has booked |
+| `POST` | `/:id/book` | Student — claims an `OPEN` slot; attaches a meeting room |
+| `POST` | `/:id/cancel` | Host or the booked student |
+| `POST` | `/:id/complete` | Host — marks done, optional feedback (mock interviews) |
+| `DELETE` | `/:id` | Host — remove an unbooked `OPEN` slot |
+
+Mentorship additionally has its own ask/accept step before scheduling:
+`PUT /api/mentorship/profile` (become listed as a mentor), `GET /api/mentorship/mentors`
+(browse), `POST /api/mentorship/requests` (student asks), `PATCH
+/api/mentorship/requests/:id/respond` (mentor accepts/rejects) — once accepted, the
+mentor publishes a `BookableSlot` the student books like a mock interview.
 
 ## Data model (key concepts)
 
@@ -278,8 +309,8 @@ Uses `mongodb-memory-server`. Two suites:
 | 1–2 | Multi-tenancy, auth, RBAC, users, master data, plans | Done |
 | **3** | **Course management: models, B2 media, instructor CRUD, admin moderation** | **Done** |
 | 4 | Enrollment and payments (Stripe checkout, subscriptions, webhooks) | Enrolment (both paths) done; payments not started |
-| 5 | Learning experience: progress tracking, quizzes, mock tests | Partial — progress and quizzes scaffolded |
-| 6 | Community and mentorship: forum, mentor booking, live sessions | Not started |
+| **5** | **Learning experience: progress tracking, quizzes, mock tests, mock interviews** | **Done (backend)** |
+| **6** | **Community and mentorship: forum, mentor booking, live sessions** | **Done (backend)** |
 | 7 | AI: doubt clearing, quiz generation, recommendations | Partial — `aiService.js` scaffolded |
 | 8 | Notifications: queued transactional email, real-time sockets | Email service exists; queue and sockets not started |
 | 9 | Analytics dashboards with pre-computed aggregates | Not started |

@@ -45,6 +45,7 @@
     "nodemailer": "^9.0.3",
     "openai": "^6.33.0",
     "otplib": "^13.4.1",
+    "socket.io": "^4.8.3",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "winston": "^3.17.0",
