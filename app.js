@@ -11,6 +11,7 @@ import logger from "./core/logger.js";
 import { errorHandler } from "./utils/error-handler.js";
 import routes from "./routes/index.js";
 import { tenantContext } from "./middlewares/tenant-context.js";
+import "./cron/studentAnalyticsCron.js"; // Register nightly student analytics cron
 import { corsOrigin } from "./utils/cors.js";
 import { generalApiLimiter } from "./middleware/rateLimiter.js";
 

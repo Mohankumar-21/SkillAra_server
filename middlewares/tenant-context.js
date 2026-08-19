@@ -6,6 +6,7 @@ export async function tenantContext(req, res, next) {
     const { subdomain, tenant } = await resolveTenantFromRequest(req);
     req.tenantSubdomain = subdomain;
     req.tenant = tenant;
+    req.tenantId = tenant?._id;
     return next();
   } catch (err) {
     return next(err);
