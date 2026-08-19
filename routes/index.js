@@ -1,4 +1,6 @@
 import express from "express";
+import analyticsRoutes from "./analyticsRoutes.js";
+import studentDashboardRoutes from "./studentDashboardRoutes.js";
 import tenantRouter from "./tenantRoutes.js";
 import authRouter from "./auth.js";
 import superadminAuthRouter from "./superadminAuth.js";
@@ -40,6 +42,8 @@ router.use("/session-slots", bookingRouter);
 router.use("/forum", forumRouter);
 router.use("/mentorship", mentorshipRouter);
 router.use("/live-sessions", liveSessionRouter);
+router.use("/admin/analytics", analyticsRoutes);
+router.use("/student/dashboard", studentDashboardRoutes); // Student dashboard endpoint
 router.use("/tenants", tenantRouter);
 router.use("/plans", planRouter);
 router.use("/organization-types", organizationTypeRouter);
