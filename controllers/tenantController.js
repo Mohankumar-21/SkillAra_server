@@ -58,9 +58,6 @@ export const createTenant = async (req, res, next) => {
     const adminEmail = (admin?.email || email || "").toLowerCase().trim();
     const adminPassword =
       admin?.password || process.env.DEFAULT_TENANT_ADMIN_PASSWORD || "ChangeMe#12345";
-    if (admin?.role && admin.role !== "TENANT_ADMIN") {
-      return sendError(res, "TENANT_OWNER_ROLE_REQUIRED", 400);
-    }
 
     await seedNewTenantDefaults(tenantData._id);
     const ownerRole = await getTenantRoleBySlug(tenantData._id, "organization-owner");

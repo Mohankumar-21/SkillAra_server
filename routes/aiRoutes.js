@@ -24,6 +24,28 @@ router.post("/tutor", requireAuth, requireTenant, checkPlanLimits({ resource: "a
     if (lessonId) {
       const lesson = await Lesson.findOne({ _id: lessonId, tenantId: req.tenantId });
       if (lesson) {
+        const actor = getActor(req);
+        
+        // 1. Check if actor owns or moderates the course
+        const course = await Course.findOne({ _id: lesson.courseId, tenantId: req.tenantId });
+        const isOwner = course && String(course.instructorId) === String(actor?.id);
+        let allowed = isOwner || canModerateCourses(actor);
+        
+        // 2. If not owner/moderator, check for ACTIVE or COMPLETED enrollment
+        if (!allowed && course) {
+          const enrolled = await Enrollment.exists({
+            userId: actor.id,
+            courseId: course._id,
+            tenantId: req.tenantId,
+            status: { $in: ["ACTIVE", "COMPLETED"] },
+          });
+          allowed = Boolean(enrolled);
+        }
+        
+        if (!allowed) {
+          return sendError(res, "LESSON_FORBIDDEN", 403);
+        }
+        
         lessonContent = lesson.content;
       }
     }

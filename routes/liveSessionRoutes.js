@@ -14,6 +14,7 @@ import {
   cancelLiveSession,
 } from "../controllers/liveSessionController.js";
 import { requireAuth, requireRole, requireTenant } from "../middlewares/auth.js";
+import { checkPlanLimits } from "../middlewares/checkPlanLimits.js";
 import { prepareResponseMsg } from "../utils/helper.js";
 import { requireDb } from "../utils/db-state.js";
 
@@ -56,6 +57,7 @@ router.post(
   requireAuth,
   requireRole("TENANT_ADMIN", "ORG_ADMIN", "TUTOR"),
   requireTenant,
+  checkPlanLimits({ resource: "live-sessions" }),
   validateBody(createSchema),
   createLiveSession
 );
