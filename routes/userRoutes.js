@@ -7,6 +7,7 @@ import express from "express";
 import { z } from "zod";
 import {
   listUsers,
+  listStudents,
   createUser,
   getUser,
   updateUser,
@@ -92,6 +93,17 @@ router.patch(
   requireTenant,
   validate(profileSchema),
   updateMyProfile
+);
+
+/** Instructor-safe roster picker — students only, minimal fields. Must stay ahead of
+ *  GET "/:id" or "students" would be swallowed as an id param. */
+router.get(
+  "/students",
+  requireDb,
+  requireAuth,
+  requireRole("TENANT_ADMIN", "ORG_ADMIN", "TUTOR"),
+  requireTenant,
+  listStudents
 );
 
 router.post(

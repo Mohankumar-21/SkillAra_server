@@ -143,6 +143,43 @@ export async function listUsers(req, res, next) {
   }
 }
 
+/**
+ * GET /api/users/students — minimal student directory for instructors building a
+ * course roster picker. Deliberately narrower than listUsers: student-role users
+ * only, and only the fields needed to pick someone (id/name/email) — instructors
+ * cannot browse the full tenant user list (staff/other instructors), only students.
+ */
+export async function listStudents(req, res, next) {
+  try {
+    const tenantId = req.tenantId;
+    const { search } = req.query;
+
+    const tenant = await Tenant.findById(tenantId).select("roles");
+    const studentRoleIds = (tenant?.roles || [])
+      .filter((r) => String(r.legacyApiRole || "").toUpperCase() === "STUDENT")
+      .map((r) => r._id);
+
+    if (studentRoleIds.length === 0) {
+      return res.status(200).send(prepareResponseMsg([], true, "Students fetched successfully", 200));
+    }
+
+    const filter = { tenantId, roleId: { $in: studentRoleIds }, status: { $ne: "disabled" } };
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const users = await User.find(filter).select("_id name email").sort({ name: 1 }).limit(500);
+    const data = users.map((u) => ({ id: u._id, name: u.name, email: u.email }));
+
+    return res.status(200).send(prepareResponseMsg(data, true, "Students fetched successfully", 200));
+  } catch (err) {
+    return next(err);
+  }
+}
+
 export async function createUser(req, res, next) {
   try {
     const { name, password, roleId, invitationStatus, phone, employeeId, departmentId, designationId, profilePhoto } = req.body;
