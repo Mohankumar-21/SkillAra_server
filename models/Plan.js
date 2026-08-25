@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 
 const BILLING_CYCLES = ["monthly", "yearly"];
-const PLAN_NAMES = ["FREE", "STARTER", "PROFESSIONAL", "ENTERPRISE"];
+const PLAN_NAMES = ["FREE", "BASIC", "PREMIUM", "ENTERPRISE"];
 
 const planSchema = new mongoose.Schema(
   {

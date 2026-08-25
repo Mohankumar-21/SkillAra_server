@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 
 export const BILLING_CYCLES = ["monthly", "yearly"];
-export const PLAN_NAMES = ["FREE", "STARTER", "PROFESSIONAL", "ENTERPRISE"];
+export const PLAN_NAMES = ["FREE", "BASIC", "PREMIUM", "ENTERPRISE" ];
 
 /** Embedded subscription plan — stored on the primary SuperAdmin.plans array. */
 export const embeddedPlanSchema = new mongoose.Schema(

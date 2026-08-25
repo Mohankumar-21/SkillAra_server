@@ -241,6 +241,29 @@ export async function seedDefaultPlans() {
     if (!exists) {
       admin.plans.push(seed);
       changed = true;
+    } else {
+      if (seed.name === "FREE") {
+        if (exists.features.maxStudents == null) {
+          exists.features.maxStudents = seed.features.maxStudents;
+          changed = true;
+        }
+        if (exists.features.maxInstructors == null) {
+          exists.features.maxInstructors = seed.features.maxInstructors;
+          changed = true;
+        }
+        if (exists.features.storageLimit === 512 || exists.features.storageLimit == null) {
+          exists.features.storageLimit = seed.features.storageLimit;
+          changed = true;
+        }
+        if (exists.features.maxLiveSessionsPerMonth !== 0) {
+          exists.features.maxLiveSessionsPerMonth = 0;
+          changed = true;
+        }
+        if (exists.features.maxMentorshipSlotsPerMonth !== 0) {
+          exists.features.maxMentorshipSlotsPerMonth = 0;
+          changed = true;
+        }
+      }
     }
   }
   if (changed) await admin.save();

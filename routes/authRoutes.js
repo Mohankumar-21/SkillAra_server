@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import User from "../models/User.js";
 import Session from "../models/Session.js";
+import Tenant from "../models/Tenant.js";
 import { resolveTenantFromRequest } from "../utils/resolve-tenant-request.js";
 import { verifyPassword } from "../services/password.js";
 import {
@@ -325,6 +326,38 @@ async function authenticateTenantUser(req, res, { allowedRoles }) {
     )
   );
 }
+const findWorkspaceSchema = z.object({
+  email: z.string().email().transform((v) => v.toLowerCase().trim()),
+});
+
+router.post("/workspace/find", requireDb, loginLimiter, async (req, res) => {
+  const parsed = findWorkspaceSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return sendError(res, "GENERAL_VALIDATION_FAILED", 400, {
+      issues: parsed.error.issues,
+      detail: validationMessageFromZod(parsed.error),
+    });
+  }
+
+  const users = await User.find({ email: parsed.data.email }).populate("tenantId", "name subdomain sub_domain");
+  
+  const workspaces = users
+    .filter(u => u.tenantId && u.status === "active")
+    .map(u => {
+      const sub = u.tenantId.subdomain || u.tenantId.sub_domain;
+      // In production you might want to use process.env.VITE_APP_URL or similar, but for local testing:
+      const url = `http://${sub}.localhost:5173`; 
+      return {
+        name: u.tenantId.name,
+        subdomain: sub,
+        url,
+      };
+    });
+
+  return res.status(200).send(
+    prepareResponseMsg({ workspaces }, true, "OK", 200)
+  );
+});
 
 router.post("/workspace/portal-hint", requireDb, loginLimiter, async (req, res) => {
   const parsed = portalHintSchema.safeParse(req.body);
