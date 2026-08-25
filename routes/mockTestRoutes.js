@@ -97,15 +97,9 @@ router.post(
   generateAndSaveMockTest
 );
 
-/** Staff oversight — every mock test in the tenant, across all courses. */
-router.get(
-  "/",
-  requireDb,
-  requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
-  requireTenant,
-  getAllMockTests
-);
+/** Role-scoped: staff see every test, instructors see their own courses' tests, students
+ *  see published tests on courses they're enrolled in. Backs the Mock Tests hub. */
+router.get("/", requireDb, requireAuth, requireTenant, getAllMockTests);
 
 router.get("/course/:courseId", requireDb, requireAuth, requireTenant, getMockTestsByCourse);
 

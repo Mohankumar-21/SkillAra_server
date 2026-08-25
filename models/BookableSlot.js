@@ -56,6 +56,12 @@ const bookableSlotSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    ticketId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "MentorshipTicket",
+      default: null,
+      index: true,
+    },
     title: { type: String, trim: true, default: "" },
     startTime: { type: Date, required: true, index: true },
     endTime: { type: Date, required: true },

@@ -62,15 +62,9 @@ router.post(
   createLiveSession
 );
 
-/** Staff oversight — every live session in the tenant, across all courses. */
-router.get(
-  "/",
-  requireDb,
-  requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
-  requireTenant,
-  getAllLiveSessions
-);
+/** Role-scoped: staff see every session, instructors see their own courses' sessions,
+ *  students see sessions on courses they're enrolled in. Backs the Live Sessions hub. */
+router.get("/", requireDb, requireAuth, requireTenant, getAllLiveSessions);
 
 router.get("/course/:courseId", requireDb, requireAuth, requireTenant, listCourseLiveSessions);
 

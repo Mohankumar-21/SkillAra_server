@@ -69,13 +69,33 @@ export async function createLiveSession(req, res, next) {
   }
 }
 
-/** GET /api/live-sessions — every session in the tenant, across all courses. Staff oversight only. */
+/** GET /api/live-sessions — live sessions visible to the caller. Staff see every session
+ *  in the tenant; instructors see sessions on courses they teach; students see sessions
+ *  on courses they're enrolled in. Backs both staff oversight and the Live Sessions hub. */
 export async function getAllLiveSessions(req, res, next) {
   try {
+    const actor = getActor(req);
     const { status, courseId } = req.query;
     const filter = { tenantId: req.tenantId };
-    if (status) filter.status = status;
-    if (courseId) filter.courseId = courseId;
+
+    if (canModerateCourses(actor)) {
+      if (status) filter.status = status;
+      if (courseId) filter.courseId = courseId;
+    } else if (actor.isInstructor) {
+      const courses = await Course.find({ tenantId: req.tenantId, instructorId: actor.id }).select("_id");
+      const courseIds = courses.map((c) => c._id);
+      filter.courseId = courseId ? courseIds.filter((id) => String(id) === courseId) : { $in: courseIds };
+      if (status) filter.status = status;
+    } else {
+      const enrollments = await Enrollment.find({
+        userId: actor.id,
+        tenantId: req.tenantId,
+        status: { $in: ["ACTIVE", "COMPLETED"] },
+      }).select("courseId");
+      const courseIds = enrollments.map((e) => e.courseId);
+      filter.courseId = courseId ? courseIds.filter((id) => String(id) === courseId) : { $in: courseIds };
+      if (status) filter.status = status;
+    }
 
     const sessions = await LiveSession.find(filter)
       .populate("courseId", "title")

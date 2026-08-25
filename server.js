@@ -10,6 +10,7 @@ import { backfillTenantAdmins } from "./utils/backfillTenantAdmins.js";
 import { backfillRolesAndPermissions } from "./utils/backfillRoles.js";
 import { syncTenantIndexes } from "./utils/syncTenantIndexes.js";
 import { attachSignaling } from "./services/webrtcSignaling.js";
+import { attachMentorshipChat } from "./services/mentorshipChatSocket.js";
 
 dotenv.config();
 
@@ -28,11 +29,13 @@ if (process.env.NODE_ENV !== "test") {
 
   const httpServer = http.createServer(app);
   attachSignaling(httpServer);
+  attachMentorshipChat(httpServer);
 
   const port = process.env.PORT || 5000;
   httpServer.listen(port, "0.0.0.0", () => {
     console.log(`The server is listening on Port ${port} !`);
     console.log(`WebRTC signaling is listening on /socket.io/webrtc`);
+    console.log("Mentorship chat is listening on /socket.io/mentorship-chat");
   });
 }
 
