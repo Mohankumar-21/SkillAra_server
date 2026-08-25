@@ -198,6 +198,32 @@ export function buildCourseKey({ tenantId, courseId, scope, lessonId, filename, 
   return `${base}/attachments/${unique}`;
 }
 
+export function buildBrandingKey({ tenantId, type = "logo", filename, mimeType }) {
+  if (!tenantId) throw new Error("buildBrandingKey requires tenantId");
+  const ext = safeExtension(filename, mimeType);
+  const unique = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}.${ext}`;
+  return `tenants/${tenantId}/branding/${type}_${unique}`;
+}
+
+export function buildUserAvatarKey({ tenantId, userId, filename, mimeType }) {
+  if (!tenantId) throw new Error("buildUserAvatarKey requires tenantId");
+  const ext = safeExtension(filename, mimeType);
+  const userSegment = userId ? `users/${userId}` : "users/temp";
+  const unique = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}.${ext}`;
+  return `tenants/${tenantId}/${userSegment}/avatar_${unique}`;
+}
+
+export function getPublicUrl(key) {
+  if (!key) return "";
+  const config = readConfig();
+  const endpoint = config.endpoint.startsWith("http") ? config.endpoint : `https://${config.endpoint}`;
+  if (process.env.B2_CDN_URL) {
+    const cdn = process.env.B2_CDN_URL.replace(/\/$/, "");
+    return `${cdn}/${key}`;
+  }
+  return `${endpoint}/${config.bucket}/${key}`;
+}
+
 /**
  * Defence in depth: before signing a URL or deleting, confirm the key really does
  * belong to the caller's tenant. Stops a tampered key in a request body from
