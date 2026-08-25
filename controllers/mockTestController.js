@@ -9,10 +9,20 @@ import { generateQuiz, incrementAiUsage } from "../services/aiService.js";
 import { prepareResponseMsg, sendError } from "../utils/helper.js";
 import { getActor, canModerateCourses } from "../utils/actor.js";
 
+function looksLikeQuestion(item) {
+  return Boolean(item && typeof item === "object" && item.question && Array.isArray(item.options));
+}
+
+/** The model doesn't always wrap the quiz the same way — sometimes a bare array,
+ *  sometimes under "questions" or "quiz", occasionally some other key entirely. */
 function normalizeAiQuestions(raw) {
-  if (Array.isArray(raw)) return raw;
-  if (raw?.questions && Array.isArray(raw.questions)) return raw.questions;
-  if (raw?.quiz && Array.isArray(raw.quiz)) return raw.quiz;
+  if (Array.isArray(raw)) return raw.filter(looksLikeQuestion);
+  if (raw?.questions && Array.isArray(raw.questions)) return raw.questions.filter(looksLikeQuestion);
+  if (raw?.quiz && Array.isArray(raw.quiz)) return raw.quiz.filter(looksLikeQuestion);
+  if (raw && typeof raw === "object") {
+    const firstArray = Object.values(raw).find((v) => Array.isArray(v) && v.some(looksLikeQuestion));
+    if (firstArray) return firstArray.filter(looksLikeQuestion);
+  }
   return [];
 }
 
@@ -70,7 +80,7 @@ function gradeMockTest(questions, answers) {
   return { graded, score, maxScore, percentage };
 }
 
-async function aggregateCourseContent(courseId) {
+export async function aggregateCourseContent(courseId) {
   const modules = await Module.find({ courseId }).select("_id");
   const lessons = await Lesson.find({ moduleId: { $in: modules.map((m) => m._id) } })
     .select("title content")
@@ -130,8 +140,14 @@ export async function generateAndSaveMockTest(req, res, next) {
       return sendError(res, "MOCK_TEST_NO_CONTENT", 400);
     }
 
-    const raw = await generateQuiz(content, questionCount || 10);
-    const questions = normalizeAiQuestions(raw);
+    // LLM structured-output is occasionally flaky (self-terminates early with an
+    // empty/malformed quiz array even under response_format json_object) — a couple
+    // of retries clears the vast majority of these without the caller ever seeing it.
+    let questions = [];
+    for (let attempt = 0; attempt < 3 && questions.length === 0; attempt += 1) {
+      const raw = await generateQuiz(content, questionCount || 10);
+      questions = normalizeAiQuestions(raw);
+    }
     if (!questions.length) {
       return sendError(res, "AI_SERVICE_ERROR", 500);
     }
@@ -186,22 +202,42 @@ export async function getMockTestsByCourse(req, res, next) {
   }
 }
 
-/** GET /api/mock-tests — every mock test in the tenant, across all courses. Staff oversight only. */
+/** GET /api/mock-tests — mock tests visible to the caller. Staff see every test in the
+ *  tenant; instructors see tests on courses they teach; students see published tests on
+ *  courses they're enrolled in. Backs both staff oversight and the Mock Tests hub. */
 export async function getAllMockTests(req, res, next) {
   try {
+    const actor = getActor(req);
     const { status, courseId } = req.query;
     const filter = { tenantId: req.tenantId };
-    if (status) filter.status = status;
-    if (courseId) filter.courseId = courseId;
+    const isStaff = canModerateCourses(actor);
+
+    if (isStaff) {
+      if (status) filter.status = status;
+      if (courseId) filter.courseId = courseId;
+    } else if (actor.isInstructor) {
+      const courses = await Course.find({ tenantId: req.tenantId, instructorId: actor.id }).select("_id");
+      const courseIds = courses.map((c) => c._id);
+      filter.courseId = courseId ? courseIds.filter((id) => String(id) === courseId) : { $in: courseIds };
+      if (status) filter.status = status;
+    } else {
+      const enrollments = await Enrollment.find({
+        userId: actor.id,
+        tenantId: req.tenantId,
+        status: { $in: ["ACTIVE", "COMPLETED"] },
+      }).select("courseId");
+      const courseIds = enrollments.map((e) => e.courseId);
+      filter.courseId = courseId ? courseIds.filter((id) => String(id) === courseId) : { $in: courseIds };
+      filter.status = "PUBLISHED";
+    }
 
     const mockTests = await MockTest.find(filter)
       .populate("courseId", "title")
       .sort({ created_on: -1 })
       .limit(500);
 
-    return res
-      .status(200)
-      .send(prepareResponseMsg(mockTests.map(sanitizeForStaff), true, "Mock tests fetched", 200));
+    const sanitize = isStaff || actor.isInstructor ? sanitizeForStaff : sanitizeForStudent;
+    return res.status(200).send(prepareResponseMsg(mockTests.map(sanitize), true, "Mock tests fetched", 200));
   } catch (err) {
     return next(err);
   }

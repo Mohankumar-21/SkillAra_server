@@ -116,6 +116,7 @@ export const ERROR_MESSAGES = {
   QUIZ_NOT_FOUND: "Quiz not found.",
   MOCK_TEST_NOT_FOUND: "Mock test not found.",
   MOCK_TEST_NO_CONTENT: "This course has no lesson content yet to generate a mock test from.",
+  COURSE_NO_CONTENT: "This course has no lesson content yet.",
   MOCK_TEST_TIME_EXPIRED: "This attempt was submitted after the allowed time window.",
   LESSON_NOT_FOUND: "Lesson not found.",
 
@@ -133,6 +134,12 @@ export const ERROR_MESSAGES = {
   MENTORSHIP_REQUEST_EXISTS: "You already have a pending request with this mentor.",
   MENTORSHIP_REQUEST_NOT_FOUND: "Mentorship request not found.",
   MENTORSHIP_REQUEST_RESOLVED: "This request has already been responded to.",
+
+  MENTORSHIP_TICKET_NOT_FOUND: "Ticket not found.",
+  MENTORSHIP_TICKET_NOT_OPEN: "This ticket has already been claimed.",
+  MENTORSHIP_TICKET_NOT_ASSIGNED: "This ticket isn't assigned to a mentor yet.",
+  MENTORSHIP_TICKET_CLOSED: "This ticket is closed.",
+  MENTORSHIP_TICKET_NOT_CLOSED: "This ticket isn't closed.",
 
   LIVE_SESSION_NOT_FOUND: "Live session not found.",
   LIVE_SESSION_CANCELLED: "This live session has been cancelled.",

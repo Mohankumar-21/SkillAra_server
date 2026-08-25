@@ -188,7 +188,14 @@ export async function dropEnrollment(req, res, next) {
 
     const actor = getActor(req);
     const isOwner = String(enrollment.userId) === String(actor.id);
-    if (!isOwner && !canModerateCourses(actor)) {
+    let isCourseInstructor = false;
+    if (!isOwner && !canModerateCourses(actor) && actor.isInstructor) {
+      const course = await Course.findOne({ _id: enrollment.courseId, tenantId: req.tenantId }).select(
+        "instructorId"
+      );
+      isCourseInstructor = Boolean(course && String(course.instructorId) === String(actor.id));
+    }
+    if (!isOwner && !canModerateCourses(actor) && !isCourseInstructor) {
       return res.status(403).send(prepareResponseMsg({}, false, "Forbidden", 403));
     }
 

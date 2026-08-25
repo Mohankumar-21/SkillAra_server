@@ -23,6 +23,7 @@ import mockTestRouter from "./mockTestRoutes.js";
 import bookingRouter from "./bookingRoutes.js";
 import forumRouter from "./forumRoutes.js";
 import mentorshipRouter from "./mentorshipRoutes.js";
+import mentorshipTicketRouter from "./mentorshipTicketRoutes.js";
 import liveSessionRouter from "./liveSessionRoutes.js";
 import storageRouter from "./storageRoutes.js";
 const router = express.Router();
@@ -43,6 +44,7 @@ router.use("/mock-tests", mockTestRouter);
 router.use("/session-slots", bookingRouter);
 router.use("/forum", forumRouter);
 router.use("/mentorship", mentorshipRouter);
+router.use("/mentorship-tickets", mentorshipTicketRouter);
 router.use("/live-sessions", liveSessionRouter);
 router.use("/admin/analytics", analyticsRoutes);
 router.use("/student/dashboard", studentDashboardRoutes); // Student dashboard endpoint
