@@ -312,6 +312,7 @@ export async function approveOwnershipTransferRequest(req, res, next) {
         {
           $set: {
             roleId: orgAdminRole._id,
+            role: "ORG_ADMIN",
             isTenantAdmin: false,
             status: "active",
           },
@@ -323,6 +324,7 @@ export async function approveOwnershipTransferRequest(req, res, next) {
         {
           $set: {
             roleId: ownerRole._id,
+            role: "TENANT_ADMIN",
             isTenantAdmin: true,
             status: "active",
           },
@@ -336,6 +338,12 @@ export async function approveOwnershipTransferRequest(req, res, next) {
       request.reviewNote = reviewNote.trim();
       request.appliedPreviousOwnerNewRole = PREVIOUS_OWNER_ROLE;
       await request.save(opts);
+
+      await Tenant.updateOne(
+        { _id: request.tenantId },
+        { $set: { email: target.email } },
+        opts
+      );
     };
 
     try {

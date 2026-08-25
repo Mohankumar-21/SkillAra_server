@@ -4,6 +4,9 @@ import { body, validationResult } from "express-validator";
 import { prepareResponseMsg, sendError } from "../utils/helper.js";
 import { requireDb } from "../utils/db-state.js";
 import { requireAuth, requireRole } from "../middlewares/auth.js";
+import { z } from "zod";
+import User from "../models/User.js";
+import { validationMessageFromZod } from "../utils/errorMessages.js";
 const tenantRouter = express.Router();
 
 tenantRouter.get(
@@ -18,6 +21,37 @@ tenantRouter.get("/resolve", requireDb, resolveTenant); // GET /tenants/resolve 
 
 tenantRouter.get("/check/:subdomain", requireDb, checkTenantSubdomain); // Public workspace lookup
 
+const findWorkspaceSchema = z.object({
+  email: z.string().email().transform((v) => v.toLowerCase().trim()),
+});
+
+tenantRouter.post("/workspace/find", requireDb, async (req, res) => {
+  const parsed = findWorkspaceSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return sendError(res, "GENERAL_VALIDATION_FAILED", 400, {
+      issues: parsed.error.issues,
+      detail: validationMessageFromZod(parsed.error),
+    });
+  }
+
+  const users = await User.find({ email: parsed.data.email }).populate("tenantId", "name subdomain sub_domain status");
+  
+  const workspaces = users
+    .filter(u => u.tenantId && u.tenantId.status === "active" && u.status === "active")
+    .map(u => {
+      const sub = u.tenantId.subdomain || u.tenantId.sub_domain;
+      const url = `http://${sub}.localhost:5173`; 
+      return {
+        name: u.tenantId.name,
+        subdomain: sub,
+        url,
+      };
+    });
+
+  return res.status(200).send(
+    prepareResponseMsg({ workspaces }, true, "OK", 200)
+  );
+});
 tenantRouter.post(
   "/",
   requireDb,

@@ -62,3 +62,5 @@ export const generalApiLimiter =
         limit: 120,
         message: rateLimitResponse,
       });
+
+// Trigger restart to clear rate limits
