@@ -24,6 +24,7 @@ import bookingRouter from "./bookingRoutes.js";
 import forumRouter from "./forumRoutes.js";
 import mentorshipRouter from "./mentorshipRoutes.js";
 import liveSessionRouter from "./liveSessionRoutes.js";
+import storageRouter from "./storageRoutes.js";
 const router = express.Router();
 
 router.use("/auth", authRouter);
@@ -31,6 +32,7 @@ router.use("/auth/legacy", legacyAuthRouter);
 router.use("/superadmin/auth", superadminAuthRouter);
 router.use("/superadmin", superadminRouter);
 router.use("/tenant-admin", tenantAdminRouter);
+router.use("/storage", storageRouter);
 router.use("/users", userRouter);
 router.use("/roles", roleRouter);
 router.use("/master-data", masterDataRouter);

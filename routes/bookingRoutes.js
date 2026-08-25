@@ -16,6 +16,7 @@ import {
   deleteSlot,
 } from "../controllers/bookingController.js";
 import { requireAuth, requireRole, requireTenant } from "../middlewares/auth.js";
+import { checkPlanLimits } from "../middlewares/checkPlanLimits.js";
 import { prepareResponseMsg } from "../utils/helper.js";
 import { requireDb } from "../utils/db-state.js";
 
@@ -62,6 +63,7 @@ router.post(
   requireRole("TENANT_ADMIN", "ORG_ADMIN", "TUTOR"),
   requireTenant,
   validateBody(createSlotSchema),
+  checkPlanLimits({ resource: "session-slots" }),
   createSlot
 );
 

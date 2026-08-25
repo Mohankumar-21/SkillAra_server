@@ -16,6 +16,7 @@ import {
   respondToRequest,
 } from "../controllers/mentorshipController.js";
 import { requireAuth, requireRole, requireTenant } from "../middlewares/auth.js";
+import { checkPlanLimits } from "../middlewares/checkPlanLimits.js";
 import { prepareResponseMsg } from "../utils/helper.js";
 import { requireDb } from "../utils/db-state.js";
 
@@ -60,6 +61,7 @@ router.put(
   requireAuth,
   requireRole("TENANT_ADMIN", "ORG_ADMIN", "TUTOR"),
   requireTenant,
+  checkPlanLimits({ resource: "mentorship" }),
   validateBody(profileSchema),
   upsertMentorProfile
 );
@@ -74,7 +76,7 @@ router.get(
 
 router.get("/mentors", requireDb, requireAuth, requireTenant, listMentors);
 
-router.post("/requests", requireDb, requireAuth, requireRole("STUDENT"), requireTenant, validateBody(requestSchema), requestMentorship);
+router.post("/requests", requireDb, requireAuth, requireRole("STUDENT"), requireTenant, checkPlanLimits({ resource: "mentorship" }), validateBody(requestSchema), requestMentorship);
 
 /** Staff oversight — every mentorship request in the tenant, any mentor. */
 router.get(
