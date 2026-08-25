@@ -34,6 +34,9 @@ const moduleSchema = new mongoose.Schema(
         ref: "Lesson",
       },
     ],
+    /** AI-generated short overview of this module's lessons — see routes/aiRoutes.js. */
+    aiSummary: { type: String, default: "" },
+    aiSummaryGeneratedAt: { type: Date, default: null },
   },
   {
     timestamps: { createdAt: "created_on", updatedAt: "updated_on" },

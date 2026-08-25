@@ -145,6 +145,8 @@ async function serializeCourse(course, { actor } = {}) {
     outcomes: doc.outcomes || [],
     requirements: doc.requirements || [],
     stats: doc.stats || {},
+    aiSummary: doc.aiSummary || "",
+    aiSummaryGeneratedAt: doc.aiSummaryGeneratedAt || null,
     thumbnailUrl: await thumbnailUrlFor(doc),
     instructor:
       doc.instructorId && typeof doc.instructorId === "object" && doc.instructorId.name !== undefined
@@ -333,6 +335,8 @@ export async function getCourse(req, res, next) {
       description: m.description || "",
       order: m.order,
       lessons: lessonsByModule.get(String(m._id)) || [],
+      aiSummary: m.aiSummary || "",
+      aiSummaryGeneratedAt: m.aiSummaryGeneratedAt || null,
     }));
 
     return sendSuccess(res, "Course fetched successfully", payload);

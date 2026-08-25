@@ -114,6 +114,10 @@ const courseSchema = new mongoose.Schema(
     tags: [String],
     outcomes: [String],
     requirements: [String],
+    /** AI-generated short overview of the course content, cached so it isn't
+     *  regenerated (and re-billed) on every page view — see routes/aiRoutes.js. */
+    aiSummary: { type: String, default: "" },
+    aiSummaryGeneratedAt: { type: Date, default: null },
     created_by: { type: String, default: "system" },
     updated_by: { type: String, default: "system" },
   },

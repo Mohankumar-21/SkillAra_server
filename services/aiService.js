@@ -3,18 +3,27 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+// Defaults to OpenAI directly; set OPENAI_BASE_URL to point the same OpenAI SDK at an
+// OpenAI-compatible gateway instead (e.g. https://openrouter.ai/api/v1 for OpenRouter).
+// AI_MODEL follows suit — OpenRouter model ids are namespaced, e.g. "openai/gpt-4o".
+const AI_MODEL = process.env.AI_MODEL || "gpt-4o";
+// The SDK defaults to a large max_tokens (16384) when unset, which a low-balance
+// OpenRouter account can't afford — cap it so requests fit a free/small balance.
+const AI_MAX_TOKENS = Number(process.env.AI_MAX_TOKENS) || 2000;
+
 let openaiInstance = null;
 
 const getOpenAiClient = () => {
   if (openaiInstance) return openaiInstance;
-  
+
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is missing from .env. Please add it to use AI features.");
   }
 
   openaiInstance = new OpenAI({
-    apiKey: apiKey,
+    apiKey,
+    baseURL: process.env.OPENAI_BASE_URL || undefined,
   });
   return openaiInstance;
 };
@@ -26,7 +35,7 @@ export const getAiTutorResponse = async (query, context = "") => {
   try {
     const client = getOpenAiClient();
     const response = await client.chat.completions.create({
-      model: "gpt-4o",
+      model: AI_MODEL,
       messages: [
         {
           role: "system",
@@ -41,6 +50,7 @@ export const getAiTutorResponse = async (query, context = "") => {
         },
       ],
       temperature: 0.7,
+      max_tokens: AI_MAX_TOKENS,
     });
 
     return response.choices[0].message.content;
@@ -57,7 +67,7 @@ export const generateQuiz = async (content, questionCount = 5) => {
   try {
     const client = getOpenAiClient();
     const response = await client.chat.completions.create({
-      model: "gpt-4o",
+      model: AI_MODEL,
       messages: [
         {
           role: "system",
@@ -79,6 +89,7 @@ export const generateQuiz = async (content, questionCount = 5) => {
         },
       ],
       response_format: { type: "json_object" },
+      max_tokens: AI_MAX_TOKENS,
     });
 
     return JSON.parse(response.choices[0].message.content);
@@ -95,7 +106,7 @@ export const summarizeContent = async (content) => {
   try {
     const client = getOpenAiClient();
     const response = await client.chat.completions.create({
-      model: "gpt-4o",
+      model: AI_MODEL,
       messages: [
         {
           role: "system",
@@ -107,6 +118,7 @@ export const summarizeContent = async (content) => {
         },
       ],
       temperature: 0.5,
+      max_tokens: AI_MAX_TOKENS,
     });
 
     return response.choices[0].message.content;
@@ -123,7 +135,7 @@ export const evaluateSubmission = async (studentWork, assignmentContext) => {
   try {
     const client = getOpenAiClient();
     const response = await client.chat.completions.create({
-      model: "gpt-4o",
+      model: AI_MODEL,
       messages: [
         {
           role: "system",
@@ -138,6 +150,7 @@ export const evaluateSubmission = async (studentWork, assignmentContext) => {
         },
       ],
       response_format: { type: "json_object" },
+      max_tokens: AI_MAX_TOKENS,
     });
 
     return JSON.parse(response.choices[0].message.content);

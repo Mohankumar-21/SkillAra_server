@@ -4,7 +4,7 @@ import { createMeeting } from "../services/liveSessionService.js";
 import { prepareResponseMsg, sendError } from "../utils/helper.js";
 import { getActor, canModerateCourses } from "../utils/actor.js";
 
-function toPublicSlot(doc) {
+export function toPublicSlot(doc) {
   const s = doc.toObject ? doc.toObject() : doc;
   return {
     id: s._id,
@@ -12,6 +12,7 @@ function toPublicSlot(doc) {
     sessionType: s.sessionType,
     hostId: s.hostId,
     courseId: s.courseId,
+    ticketId: s.ticketId,
     title: s.title,
     startTime: s.startTime,
     endTime: s.endTime,
