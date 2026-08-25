@@ -19,6 +19,7 @@ import {
   moderateAnswer,
 } from "../controllers/forumController.js";
 import { requireAuth, requireRole, requireTenant } from "../middlewares/auth.js";
+import { checkPlanLimits } from "../middlewares/checkPlanLimits.js";
 import { prepareResponseMsg } from "../utils/helper.js";
 import { requireDb } from "../utils/db-state.js";
 
@@ -59,7 +60,7 @@ function validateBody(schema) {
   };
 }
 
-router.post("/questions", requireDb, requireAuth, requireTenant, validateBody(questionSchema), createQuestion);
+router.post("/questions", requireDb, requireAuth, requireTenant, checkPlanLimits({ resource: "community" }), validateBody(questionSchema), createQuestion);
 router.get("/questions", requireDb, requireAuth, requireTenant, listQuestions);
 router.get("/questions/:id", requireDb, requireAuth, requireTenant, getQuestion);
 router.delete("/questions/:id", requireDb, requireAuth, requireTenant, deleteQuestion);
@@ -74,7 +75,7 @@ router.patch(
   moderateQuestion
 );
 
-router.post("/questions/:id/answers", requireDb, requireAuth, requireTenant, validateBody(answerSchema), createAnswer);
+router.post("/questions/:id/answers", requireDb, requireAuth, requireTenant, checkPlanLimits({ resource: "community" }), validateBody(answerSchema), createAnswer);
 router.delete("/answers/:id", requireDb, requireAuth, requireTenant, deleteAnswer);
 router.post("/answers/:id/accept", requireDb, requireAuth, requireTenant, acceptAnswer);
 router.post("/answers/:id/vote", requireDb, requireAuth, requireTenant, validateBody(voteSchema), voteAnswer);

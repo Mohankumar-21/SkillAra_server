@@ -37,7 +37,7 @@ export async function listPlans({ activeOnly = false } = {}) {
   let plans = admin.plans;
   if (activeOnly) plans = plans.filter((p) => p.isActive !== false);
   return plans.map((p) => normalizePlanForApi(p)).sort((a, b) => {
-    const order = { FREE: 0, BASIC: 1, PREMIUM: 2, ENTERPRISE: 3 };
+    const order = { FREE: 0, STARTER: 1, PROFESSIONAL: 2, ENTERPRISE: 3 };
     return (order[a.name] ?? 99) - (order[b.name] ?? 99);
   });
 }
@@ -114,54 +114,117 @@ const DEFAULT_PLANS = [
     price: 0,
     billingCycle: "monthly",
     features: {
-      maxUsers: 25,
+      maxStudents: 25,
+      maxInstructors: 2,
+      maxUsers: 27,
       maxCourses: 5,
+      storageLimit: 1024, // 1 GB
+      aiCredits: 50,
       maxAIRequests: 50,
-      storageLimit: 512,
+      liveClassesEnabled: false,
+      certificatesEnabled: false,
+      communityEnabled: false,
+      analyticsEnabled: false,
+      analyticsAccess: false,
+      mentorshipEnabled: false,
+      mockInterviewsEnabled: false,
+      maxLiveSessionsPerMonth: 0,
+      maxMentorshipSlotsPerMonth: 0,
       aiFeatures: true,
       aiTier: "BASIC",
       evaluationEnabled: false,
       summarizationEnabled: true,
       predictiveAnalyticsEnabled: false,
-      analyticsAccess: false,
       prioritySupport: false,
     },
     isActive: true,
   },
   {
-    name: "BASIC",
+    name: "STARTER",
     price: 29,
     billingCycle: "monthly",
     features: {
-      maxUsers: 100,
+      maxStudents: 100,
+      maxInstructors: 10,
+      maxUsers: 110,
       maxCourses: 25,
+      storageLimit: 25600, // 25 GB
+      aiCredits: 500,
       maxAIRequests: 500,
-      storageLimit: 2048,
+      liveClassesEnabled: true,
+      certificatesEnabled: true,
+      communityEnabled: false,
+      analyticsEnabled: true,
+      analyticsAccess: true,
+      mentorshipEnabled: true,
+      mockInterviewsEnabled: true,
+      maxLiveSessionsPerMonth: 10,
+      maxMentorshipSlotsPerMonth: 20,
       aiFeatures: true,
       aiTier: "BASIC",
       evaluationEnabled: true,
       summarizationEnabled: true,
       predictiveAnalyticsEnabled: false,
-      analyticsAccess: true,
       prioritySupport: false,
     },
     isActive: true,
   },
   {
-    name: "PREMIUM",
+    name: "PROFESSIONAL",
     price: 99,
     billingCycle: "monthly",
     features: {
-      maxUsers: 500,
+      maxStudents: 500,
+      maxInstructors: 50,
+      maxUsers: 550,
       maxCourses: 100,
+      storageLimit: 102400, // 100 GB
+      aiCredits: 5000,
       maxAIRequests: 5000,
-      storageLimit: 10240,
+      liveClassesEnabled: true,
+      certificatesEnabled: true,
+      communityEnabled: true,
+      analyticsEnabled: true,
+      analyticsAccess: true,
+      mentorshipEnabled: true,
+      mockInterviewsEnabled: true,
+      maxLiveSessionsPerMonth: 50,
+      maxMentorshipSlotsPerMonth: 100,
       aiFeatures: true,
       aiTier: "ADVANCED",
       evaluationEnabled: true,
       summarizationEnabled: true,
       predictiveAnalyticsEnabled: true,
+      prioritySupport: true,
+    },
+    isActive: true,
+  },
+  {
+    name: "ENTERPRISE",
+    price: 0,
+    billingCycle: "monthly",
+    features: {
+      maxStudents: null, // Unlimited
+      maxInstructors: null,
+      maxUsers: null,
+      maxCourses: null,
+      storageLimit: null, // Unlimited
+      aiCredits: null,
+      maxAIRequests: null,
+      liveClassesEnabled: true,
+      certificatesEnabled: true,
+      communityEnabled: true,
+      analyticsEnabled: true,
       analyticsAccess: true,
+      mentorshipEnabled: true,
+      mockInterviewsEnabled: true,
+      maxLiveSessionsPerMonth: null,
+      maxMentorshipSlotsPerMonth: null,
+      aiFeatures: true,
+      aiTier: "PRO",
+      evaluationEnabled: true,
+      summarizationEnabled: true,
+      predictiveAnalyticsEnabled: true,
       prioritySupport: true,
     },
     isActive: true,
@@ -178,6 +241,29 @@ export async function seedDefaultPlans() {
     if (!exists) {
       admin.plans.push(seed);
       changed = true;
+    } else {
+      if (seed.name === "FREE") {
+        if (exists.features.maxStudents == null) {
+          exists.features.maxStudents = seed.features.maxStudents;
+          changed = true;
+        }
+        if (exists.features.maxInstructors == null) {
+          exists.features.maxInstructors = seed.features.maxInstructors;
+          changed = true;
+        }
+        if (exists.features.storageLimit === 512 || exists.features.storageLimit == null) {
+          exists.features.storageLimit = seed.features.storageLimit;
+          changed = true;
+        }
+        if (exists.features.maxLiveSessionsPerMonth !== 0) {
+          exists.features.maxLiveSessionsPerMonth = 0;
+          changed = true;
+        }
+        if (exists.features.maxMentorshipSlotsPerMonth !== 0) {
+          exists.features.maxMentorshipSlotsPerMonth = 0;
+          changed = true;
+        }
+      }
     }
   }
   if (changed) await admin.save();

@@ -11,6 +11,7 @@ import express from "express";
 import { z } from "zod";
 import { upsertMentorProfile, listMentors, getMyMentorProfile } from "../controllers/mentorshipController.js";
 import { requireAuth, requireRole, requireTenant } from "../middlewares/auth.js";
+import { checkPlanLimits } from "../middlewares/checkPlanLimits.js";
 import { prepareResponseMsg } from "../utils/helper.js";
 import { requireDb } from "../utils/db-state.js";
 
@@ -42,6 +43,7 @@ router.put(
   requireAuth,
   requireRole("TENANT_ADMIN", "ORG_ADMIN", "TUTOR"),
   requireTenant,
+  checkPlanLimits({ resource: "mentorship" }),
   validateBody(profileSchema),
   upsertMentorProfile
 );

@@ -28,8 +28,12 @@ import { normalizeTenantForApi } from "../utils/tenantMapper.js";
 
 import { seedNewTenantDefaults } from "../services/tenantSeedService.js";
 import { getTenantRoleBySlug } from "../services/roleService.js";
-
-
+import {
+  buildBrandingKey,
+  getPublicUrl,
+  putObject,
+  isStorageConfigured,
+} from "../services/storageService.js";
 
 const SUBDOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 
@@ -258,43 +262,47 @@ export async function createTenantWithAdmin(req, res, next) {
 
 
 
+    let logoUrl = body.logo ?? null;
+    if (logoUrl && String(logoUrl).startsWith("data:image/") && isStorageConfigured()) {
+      try {
+        const matches = String(logoUrl).match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
+        if (matches) {
+          const mimeType = matches[1];
+          const buffer = Buffer.from(matches[2], "base64");
+          const key = buildBrandingKey({
+            tenantId: subdomain,
+            type: "logo",
+            filename: "logo",
+            mimeType,
+          });
+          await putObject({ key, body: buffer, mimeType, cacheControl: "public, max-age=31536000, immutable" });
+          logoUrl = getPublicUrl(key);
+        }
+      } catch (err) {
+        logger.warn(`Failed to upload logo to B2 during tenant create: ${err.message}`);
+      }
+    }
+
     const temporaryPassword = generateTemporaryPassword();
 
     session.startTransaction();
 
-
-
     const [tenant] = await Tenant.create(
-
       [
-
         {
-
           name,
-
           subdomain,
-
           domain,
-
           email: contactEmail || adminEmail,
-
           phone: String(body.phone || "").trim(),
-
           orgType: orgTypeLabel,
-
           orgTypeId: orgTypeDoc?._id || null,
-
           industry: String(body.industry || "").trim(),
-
           website: String(body.website || "").trim(),
-
           country: String(body.country || "").trim(),
-
           timezone: String(body.timezone || "").trim(),
-
           currency: String(body.currency || "").trim(),
-
-          logo: body.logo ?? null,
+          logo: logoUrl,
 
           branding: readBranding(body),
 

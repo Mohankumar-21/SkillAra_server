@@ -157,12 +157,14 @@ router.delete("/lessons/:lessonId", ...authoring, deleteLesson);
 router.post(
   "/lessons/:lessonId/content",
   ...authoring,
+  checkPlanLimits({ resource: "storage" }),
   withUpload(uploadMedia.single("file")),
   uploadLessonContent
 );
 router.post(
   "/lessons/:lessonId/upload-url",
   ...authoring,
+  checkPlanLimits({ resource: "storage" }),
   validateBody(uploadUrlSchema),
   createLessonUploadUrl
 );
@@ -175,6 +177,7 @@ router.post(
 router.post(
   "/lessons/:lessonId/attachments",
   ...authoring,
+  checkPlanLimits({ resource: "storage" }),
   withUpload(uploadDocument.single("file")),
   addLessonAttachment
 );
@@ -218,6 +221,7 @@ router.post("/:id/unblock", ...moderating, unblockCourse);
 router.post(
   "/:id/thumbnail",
   ...authoring,
+  checkPlanLimits({ resource: "storage" }),
   withUpload(uploadImage.single("file")),
   uploadCourseThumbnail
 );

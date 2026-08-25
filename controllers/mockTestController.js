@@ -161,7 +161,7 @@ export async function generateAndSaveMockTest(req, res, next) {
       questions,
       durationMinutes: durationMinutes || 30,
       passingScore: passingScore ?? 60,
-      status: status || "PUBLISHED",
+      status: "DRAFT",
       source: "AI",
       createdBy: actor.id,
     });
@@ -233,6 +233,7 @@ export async function getAllMockTests(req, res, next) {
 
     const mockTests = await MockTest.find(filter)
       .populate("courseId", "title")
+      .populate("createdBy", "name email")
       .sort({ created_on: -1 })
       .limit(500);
 

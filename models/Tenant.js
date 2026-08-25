@@ -108,6 +108,16 @@ const tenantSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    /**
+     * Running total of storage used by this tenant across all B2 uploads (MB).
+     * Incremented on each successful file upload, decremented on deletion.
+     * Used for plan-limit enforcement (checkPlanLimits storageLimit check).
+     */
+    storageUsedMb: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
   },
   {
     timestamps: { createdAt: true, updatedAt: true },

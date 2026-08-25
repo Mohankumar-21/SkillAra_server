@@ -31,6 +31,7 @@ import {
   putObject,
   DOWNLOAD_URL_TTL_SECONDS,
 } from "../services/storageService.js";
+import { incrementTenantStorage, decrementTenantStorage } from "../middlewares/checkPlanLimits.js";
 
 const isObjectId = (value) => mongoose.Types.ObjectId.isValid(String(value || ""));
 
@@ -594,6 +595,8 @@ export async function uploadCourseThumbnail(req, res, next) {
     ).populate("instructorId", "name email");
 
     if (previousKey && previousKey !== key) await deleteObject(previousKey);
+    // Track storage usage for plan enforcement
+    await incrementTenantStorage(req.tenantId, req.file.size);
 
     return sendSuccess(res, "Thumbnail updated", await serializeCourse(updated, { actor }), 201);
   } catch (err) {
@@ -922,6 +925,8 @@ export async function uploadLessonContent(req, res, next) {
     );
 
     if (previousKey && previousKey !== key) await deleteObject(previousKey);
+    // Track storage usage for plan enforcement
+    await incrementTenantStorage(req.tenantId, req.file.size);
 
     return sendSuccess(
       res,
@@ -1015,6 +1020,8 @@ export async function completeLessonUpload(req, res, next) {
     );
 
     if (previousKey && previousKey !== key) await deleteObject(previousKey);
+    // Track storage usage for plan enforcement (presigned path: size from B2 head)
+    if (head.size) await incrementTenantStorage(req.tenantId, head.size);
 
     return sendSuccess(
       res,
@@ -1061,6 +1068,8 @@ export async function addLessonAttachment(req, res, next) {
       },
       { new: true }
     );
+    // Track storage usage for plan enforcement
+    await incrementTenantStorage(req.tenantId, req.file.size);
 
     return sendSuccess(
       res,
