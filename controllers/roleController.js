@@ -78,6 +78,9 @@ export async function createTenantRole(req, res, next) {
     const name = String(req.body.name || "").trim();
     const description = String(req.body.description || "").trim();
     const status = req.body.status === "inactive" ? "inactive" : "active";
+    const validApiRoles = ["TENANT_ADMIN", "ORG_ADMIN", "TUTOR", "STUDENT"];
+    const legacyApiRole = validApiRoles.includes(req.body.legacyApiRole) ? req.body.legacyApiRole : "STUDENT";
+    const legacyRole = legacyApiRole === "TENANT_ADMIN" ? "tenant_admin" : legacyApiRole === "ORG_ADMIN" ? "org_admin" : legacyApiRole === "TUTOR" ? "instructor" : "student";
     const modules = getPermissionModules("tenant");
     const permissions = sanitizePermissions(req.body.permissions, modules);
 
@@ -101,6 +104,8 @@ export async function createTenantRole(req, res, next) {
       roleType: "custom",
       protected: false,
       isOwnerRole: false,
+      legacyRole,
+      legacyApiRole,
       status,
     });
     await tenant.save();
@@ -148,6 +153,13 @@ export async function updateTenantRole(req, res, next) {
     }
     if (req.body.permissions !== undefined) {
       role.permissions = sanitizePermissions(req.body.permissions, modules);
+    }
+    if (!role.protected && req.body.legacyApiRole !== undefined) {
+      const validApiRoles = ["TENANT_ADMIN", "ORG_ADMIN", "TUTOR", "STUDENT"];
+      if (validApiRoles.includes(req.body.legacyApiRole)) {
+        role.legacyApiRole = req.body.legacyApiRole;
+        role.legacyRole = req.body.legacyApiRole === "TENANT_ADMIN" ? "tenant_admin" : req.body.legacyApiRole === "ORG_ADMIN" ? "org_admin" : req.body.legacyApiRole === "TUTOR" ? "instructor" : "student";
+      }
     }
 
     await tenant.save();

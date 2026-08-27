@@ -81,7 +81,7 @@ router.get(
 
 router.get("/my", requireDb, requireAuth, requireTenant, getMySlots);
 
-router.post("/:id/book", requireDb, requireAuth, requireRole("STUDENT"), requireTenant, bookSlot);
+router.post("/:id/book", requireDb, requireAuth, requireRole("LEARNER", "STUDENT"), requireTenant, bookSlot);
 
 router.post("/:id/cancel", requireDb, requireAuth, requireTenant, validateBody(cancelSchema), cancelSlot);
 

@@ -88,11 +88,6 @@ const tenantSchema = new mongoose.Schema(
       type: [embeddedLookupSchema],
       default: () => [],
     },
-    /** User.designationId references designations[]._id */
-    designations: {
-      type: [embeddedLookupSchema],
-      default: () => [],
-    },
     /**
      * When true, anyone can create a learner account on this workspace's subdomain
      * via POST /api/auth/signup. When false, students must be invited by an admin.

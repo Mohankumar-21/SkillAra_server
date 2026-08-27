@@ -6,7 +6,7 @@ import { hashPassword } from "../services/password.js";
 import { writeAuditLog } from "../services/auditLog.js";
 import { normalizeTenantForApi, booleanToTenantStatus, isTenantActive } from "../utils/tenantMapper.js";
 import { extractSubdomainFromRequest } from "../utils/resolve-tenant-request.js";
-import { getPlanById, buildPlanNameMap } from "../services/planService.js";
+import { getPlanById, buildPlanMap, listPlans } from "../services/planService.js";
 import { seedNewTenantDefaults } from "../services/tenantSeedService.js";
 import { getTenantRoleBySlug } from "../services/roleService.js";
 
@@ -97,7 +97,7 @@ export const createTenant = async (req, res, next) => {
 export const listTenants = async (req, res, next) => {
   try {
     const tenants = await Tenant.find({}).sort({ createdAt: -1 }).lean();
-    const planMap = await buildPlanNameMap();
+    const planMap = await buildPlanMap();
 
     const data = tenants.map((t) =>
       normalizeTenantForApi(t, planMap.get(String(t.planId)) || t.plan)
@@ -117,7 +117,7 @@ export const getTenant = async (req, res, next) => {
     if (!tenant) {
       return sendError(res, "TENANT_NOT_FOUND", 404);
     }
-    const planMap = await buildPlanNameMap();
+    const planMap = await buildPlanMap();
     const data = normalizeTenantForApi(tenant, planMap.get(String(tenant.planId)) || tenant.plan);
     return res.status(200).send(prepareResponseMsg(data, true, getMessage(103), 200));
   } catch (err) {
@@ -161,7 +161,7 @@ export const updateTenant = async (req, res, next) => {
     }
 
     await tenant.save();
-    const planMap = await buildPlanNameMap();
+    const planMap = await buildPlanMap();
     const data = normalizeTenantForApi(
       tenant.toObject(),
       planMap.get(String(tenant.planId)) || tenant.plan
@@ -223,8 +223,18 @@ export const resolveTenant = async (req, res) => {
     return sendError(res, "TENANT_NOT_FOUND", 404);
   }
 
+  let planDoc = null;
+  if (tenant.planId) {
+    planDoc = await getPlanById(tenant.planId);
+  }
+  if (!planDoc) {
+    const plans = await listPlans();
+    planDoc = plans.find(p => p.name === (tenant.plan || "FREE").toUpperCase());
+  }
+  
   const tenantPayload = normalizeTenantForApi(
-    tenant.toObject ? tenant.toObject() : tenant
+    tenant.toObject ? tenant.toObject() : tenant,
+    planDoc
   );
 
   const resp = prepareResponseMsg(
