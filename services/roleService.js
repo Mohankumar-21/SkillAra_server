@@ -232,7 +232,7 @@ export function isAssignableTenantRole(role) {
 }
 
 export async function getAccessTokenRoleForUser(user) {
-  if (!user) return "STUDENT";
+  if (!user) return "LEARNER";
   const role = await resolveTenantRoleForUser({
     tenantId: user.tenantId,
     roleId: user.roleId,
@@ -241,7 +241,7 @@ export async function getAccessTokenRoleForUser(user) {
   if (role?.legacyApiRole) return role.legacyApiRole;
   if (role?.legacyRole) return normalizeRoleForApi(role.legacyRole);
   if (user.isTenantAdmin) return "TENANT_ADMIN";
-  return "STUDENT";
+  return "LEARNER";
 }
 
 export async function resolveTenantRoleForUser({ tenantId, roleId, legacyRole, isTenantAdmin }) {

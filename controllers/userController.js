@@ -182,7 +182,7 @@ export async function listStudents(req, res, next) {
 
 export async function createUser(req, res, next) {
   try {
-    const { name, password, roleId, invitationStatus, phone, employeeId, departmentId, designationId, profilePhoto } = req.body;
+    const { name, password, roleId, invitationStatus, phone, employeeId, departmentId, profilePhoto } = req.body;
     const email = String(req.body?.email || "")
       .trim()
       .toLowerCase();
@@ -215,7 +215,6 @@ export async function createUser(req, res, next) {
       phone,
       employeeId,
       departmentId,
-      designationId,
       profilePhoto,
     }, tenantId);
     if (profileError) {

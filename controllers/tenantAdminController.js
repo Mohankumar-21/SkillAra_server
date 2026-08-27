@@ -57,7 +57,6 @@ export async function inviteUser(req, res, next) {
       phone: req.body.phone,
       employeeId: req.body.employeeId,
       departmentId: req.body.departmentId,
-      designationId: req.body.designationId,
       profilePhoto: req.body.profilePhoto,
     }, tenant._id);
     if (profileError) {

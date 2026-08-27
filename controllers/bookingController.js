@@ -3,6 +3,7 @@ import Course from "../models/Course.js";
 import { createMeeting } from "../services/liveSessionService.js";
 import { prepareResponseMsg, sendError } from "../utils/helper.js";
 import { getActor, canModerateCourses } from "../utils/actor.js";
+import { incrementFeatureUsage } from "../middlewares/checkPlanLimits.js";
 
 export function toPublicSlot(doc) {
   const s = doc.toObject ? doc.toObject() : doc;
@@ -54,6 +55,8 @@ export async function createSlot(req, res, next) {
       endTime: end,
       status: "OPEN",
     });
+
+    await incrementFeatureUsage(req.tenantId, "MENTORSHIP_SLOT");
 
     return res
       .status(201)

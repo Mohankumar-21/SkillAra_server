@@ -10,7 +10,7 @@ import { inviteUser, resendInvite } from "../controllers/tenantAdminController.j
 import { authenticate } from "../middleware/authenticate.js";
 import { requireTenantUser } from "../middleware/requireTenantUser.js";
 import { scopeTenant } from "../middleware/scopeTenant.js";
-import { requireRole } from "../middleware/requireRole.js";
+import { requirePermission } from "../middleware/requirePermission.js";
 import { requireDb } from "../utils/db-state.js";
 import { validateBody } from "../utils/validate.js";
 
@@ -26,7 +26,6 @@ const inviteUserSchema = z.object({
   phone: z.string().trim().max(30).optional(),
   employeeId: z.string().trim().max(50).optional(),
   departmentId: z.string().regex(/^[0-9a-fA-F]{24}$/).nullable().optional(),
-  designationId: z.string().regex(/^[0-9a-fA-F]{24}$/).nullable().optional(),
   profilePhoto: z.string().max(500_000).optional(),
 });
 
@@ -40,7 +39,7 @@ router.post(
   authenticate,
   requireTenantUser,
   scopeTenant,
-  requireRole("tenant_admin"),
+  requirePermission("users", "create"),
   validateBody(inviteUserSchema),
   inviteUser
 );
@@ -51,7 +50,7 @@ router.post(
   authenticate,
   requireTenantUser,
   scopeTenant,
-  requireRole("tenant_admin"),
+  requirePermission("users", "create"),
   validateBody(resendInviteSchema),
   resendInvite
 );

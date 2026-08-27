@@ -103,7 +103,6 @@ export function toPublicUser(user, ctx = null) {
   const roleLabel = roleDoc?.name || (isTenantAdmin ? "Organization Owner" : "—");
 
   const departmentDoc = doc.departmentId ? ctx?.masterMap?.get(String(doc.departmentId)) : null;
-  const designationDoc = doc.designationId ? ctx?.masterMap?.get(String(doc.designationId)) : null;
 
   return {
     id: doc._id,
@@ -120,9 +119,7 @@ export function toPublicUser(user, ctx = null) {
     phone: doc.phone || "",
     employeeId: doc.employeeId || "",
     departmentId: doc.departmentId ? String(doc.departmentId) : null,
-    designationId: doc.designationId ? String(doc.designationId) : null,
     department: departmentDoc?.name || null,
-    designation: designationDoc?.name || null,
     profilePhoto: doc.profilePhoto || "",
     isDefaultPassword,
     isTenantAdmin,
@@ -165,18 +162,6 @@ export async function applyUserProfileFields(updates, body, tenantId) {
       const check = await validateMasterDataRef(tenantId, "department", body.departmentId);
       if (check.error) return check.error;
       updates.departmentId = check.doc._id;
-    } else {
-      return "MASTER_DATA_NOT_FOUND";
-    }
-  }
-
-  if (body.designationId !== undefined) {
-    if (!body.designationId) {
-      updates.designationId = null;
-    } else if (OBJECT_ID_RE.test(String(body.designationId))) {
-      const check = await validateMasterDataRef(tenantId, "designation", body.designationId);
-      if (check.error) return check.error;
-      updates.designationId = check.doc._id;
     } else {
       return "MASTER_DATA_NOT_FOUND";
     }

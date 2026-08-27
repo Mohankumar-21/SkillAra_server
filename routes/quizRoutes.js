@@ -106,7 +106,7 @@ router.post(
   "/:id/submit",
   requireDb,
   requireAuth,
-  requireRole("STUDENT"),
+  requireRole("LEARNER", "STUDENT"),
   requireTenant,
   validateBody(submitSchema),
   submitQuiz

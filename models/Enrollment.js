@@ -22,7 +22,7 @@ const enrollmentSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["ACTIVE", "COMPLETED", "DROPPED"],
+      enum: ["ACTIVE", "COMPLETED", "DROPPED", "PENDING_PAYMENT"],
       default: "ACTIVE",
       index: true,
     },

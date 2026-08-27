@@ -387,10 +387,10 @@ export async function loadMasterDataMap(tenantId, ids) {
   const uniqueIds = [...new Set((ids || []).filter(Boolean).map(String))];
   if (!uniqueIds.length) return new Map();
 
-  const tenant = await Tenant.findById(tenantId).select("departments designations");
+  const tenant = await Tenant.findById(tenantId).select("departments");
   if (!tenant) return new Map();
 
-  const all = [...(tenant.departments || []), ...(tenant.designations || [])];
+  const all = [...(tenant.departments || [])];
   const idSet = new Set(uniqueIds);
   return new Map(
     all.filter((item) => idSet.has(String(item._id))).map((item) => [String(item._id), item])
@@ -402,7 +402,6 @@ export async function attachMasterLabelsToUsers(users, tenantId) {
   users.forEach((u) => {
     const doc = u.toObject ? u.toObject() : u;
     if (doc.departmentId) ids.push(doc.departmentId);
-    if (doc.designationId) ids.push(doc.designationId);
   });
   const map = await loadMasterDataMap(tenantId, ids);
   return { map };

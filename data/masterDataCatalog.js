@@ -9,14 +9,6 @@ export const MASTER_DATA_CATEGORIES = [
     userField: "departmentId",
     description: "Organizational units used when assigning users.",
   },
-  {
-    key: "designation",
-    label: "Designation",
-    labelPlural: "Designations",
-    tenantField: "designations",
-    userField: "designationId",
-    description: "Job titles and roles within the organization.",
-  },
 ];
 
 export const MASTER_DATA_CATEGORY_KEYS = MASTER_DATA_CATEGORIES.map((c) => c.key);
@@ -40,54 +32,11 @@ export const DEFAULT_DEPARTMENT_SEEDS = [
   },
 ];
 
-/** Default designations seeded for each new tenant (code is exactly 3 chars). */
-export const DEFAULT_DESIGNATION_SEEDS = [
-  {
-    name: "Instructor",
-    code: "INS",
-    description: "Delivers courses and supports learner progress.",
-  },
-  {
-    name: "Senior Instructor",
-    code: "SIN",
-    description: "Leads instructional delivery and mentors instructors.",
-  },
-  {
-    name: "Teaching Assistant",
-    code: "TAS",
-    description: "Assists instructors with sessions, grading, and learner support.",
-  },
-  {
-    name: "Course Coordinator",
-    code: "CCO",
-    description: "Coordinates course schedules, content readiness, and delivery logistics.",
-  },
-  {
-    name: "Program Manager",
-    code: "PMG",
-    description: "Owns program outcomes, timelines, and cross-team coordination.",
-  },
-  {
-    name: "Academic Head",
-    code: "AHD",
-    description: "Provides academic leadership and quality oversight.",
-  },
-  {
-    name: "Administrator",
-    code: "ADM",
-    description: "Handles organizational administration and operational tasks.",
-  },
-  {
-    name: "Trainer",
-    code: "TRN",
-    description: "Facilitates training sessions and skill-building workshops.",
-  },
-];
+
 
 /** Default lookup values per master data category — extend when adding categories. */
 export const DEFAULT_MASTER_DATA_SEEDS = {
   department: DEFAULT_DEPARTMENT_SEEDS,
-  designation: DEFAULT_DESIGNATION_SEEDS,
 };
 
 export function normalizeMasterSeed(seed) {

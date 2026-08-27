@@ -21,7 +21,7 @@ function toApiRole(role) {
 
 /**
  * @returns {{id: string, tenantId: string|null, role: string, isSuperadmin: boolean,
- *            isTenantAdmin: boolean, isInstructor: boolean, isStudent: boolean}|null}
+ *            isTenantAdmin: boolean, isInstructor: boolean, isLearner: boolean, isStudent: boolean}|null}
  */
 export function getActor(req) {
   const raw = req?.user;
@@ -38,11 +38,14 @@ export function getActor(req) {
   const isTenantAdmin = !isSuperadmin && isTenantAdminUser(doc);
   const isOrgAdmin = !isSuperadmin && apiRole === "ORG_ADMIN";
 
-  let role = "STUDENT";
+  let role = "LEARNER";
   if (isSuperadmin) role = "SUPER_ADMIN";
   else if (isTenantAdmin) role = "TENANT_ADMIN";
   else if (isOrgAdmin) role = "ORG_ADMIN";
-  else role = normalizeRoleForApi(doc.role) || "STUDENT";
+  else {
+    const rawRole = normalizeRoleForApi(doc.role);
+    role = (rawRole === "STUDENT" || rawRole === "LEARNER") ? "LEARNER" : (rawRole || "LEARNER");
+  }
 
   return {
     id,
@@ -52,7 +55,8 @@ export function getActor(req) {
     // Org admins get the same course-moderation reach as the owner within their tenant.
     isTenantAdmin: isTenantAdmin || isOrgAdmin,
     isInstructor: role === "TUTOR",
-    isStudent: role === "STUDENT",
+    isLearner: role === "LEARNER" || role === "STUDENT",
+    isStudent: role === "LEARNER" || role === "STUDENT", // Backwards compatibility for transition
   };
 }
 
