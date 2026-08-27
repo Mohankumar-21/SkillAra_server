@@ -1169,3 +1169,32 @@ export async function getLessonPlaybackUrl(req, res, next) {
     return next(err);
   }
 }
+
+export async function getEnrollableUsers(req, res, next) {
+  try {
+    const { id: courseId } = req.params;
+    
+    const course = await Course.findOne({ _id: courseId, tenantId: req.tenantId });
+    if (!course) {
+      return res.status(404).send(prepareResponseMsg({}, false, "Course not found", 404));
+    }
+
+    const tenant = await Tenant.findById(req.tenantId).select("roles");
+    const studentRoleIds = (tenant?.roles || [])
+      .filter((r) => String(r.legacyApiRole || "").toUpperCase() === "STUDENT")
+      .map((r) => r._id);
+
+    if (studentRoleIds.length === 0) {
+      return res.status(200).send(prepareResponseMsg([], true, "Students fetched successfully", 200));
+    }
+
+    const filter = { tenantId: req.tenantId, roleId: { $in: studentRoleIds }, status: { $ne: "disabled" } };
+    
+    const users = await User.find(filter).select("_id name email").sort({ name: 1 }).limit(500);
+    const data = users.map((u) => ({ id: u._id, name: u.name, email: u.email }));
+
+    return res.status(200).send(prepareResponseMsg(data, true, "Enrollable users fetched successfully", 200));
+  } catch (err) {
+    return next(err);
+  }
+}

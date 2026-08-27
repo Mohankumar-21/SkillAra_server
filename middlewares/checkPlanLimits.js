@@ -14,16 +14,13 @@ function currentMonth() {
 }
 
 /**
- * Count documents for `model` matching `filter` where createdAt is within the current month.
- * Returns 0 if the model is not registered.
+ * Fetch feature usage for the current month.
  */
-async function countThisMonth(modelName, filter) {
-  const Model = mongoose.connection.models[modelName];
-  if (!Model) return 0;
-  const start = new Date(`${currentMonth()}-01T00:00:00.000Z`);
-  const end = new Date(start);
-  end.setMonth(end.getMonth() + 1);
-  return Model.countDocuments({ ...filter, createdAt: { $gte: start, $lt: end } });
+async function getFeatureUsage(tenantId, feature) {
+  const FeatureUsage = mongoose.connection.models.FeatureUsage;
+  if (!FeatureUsage) return 0;
+  const usage = await FeatureUsage.findOne({ tenantId, month: currentMonth(), feature });
+  return usage ? usage.usageCount : 0;
 }
 
 /**
@@ -120,7 +117,7 @@ export function checkPlanLimits({ resource } = { resource: "users" }) {
         }
         const maxPerMonth = f.maxLiveSessionsPerMonth != null ? Number(f.maxLiveSessionsPerMonth) : null;
         if (maxPerMonth !== null) {
-          const used = await countThisMonth("LiveSession", { tenantId });
+          const used = await getFeatureUsage(tenantId, "LIVE_SESSION");
           if (used >= maxPerMonth) {
             return sendError(res, "PLAN_LIMIT_LIVE_SESSIONS", 403);
           }
@@ -140,7 +137,7 @@ export function checkPlanLimits({ resource } = { resource: "users" }) {
           }
           const maxSlots = f.maxMentorshipSlotsPerMonth != null ? Number(f.maxMentorshipSlotsPerMonth) : null;
           if (maxSlots !== null) {
-            const used = await countThisMonth("SessionSlot", { tenantId, sessionType: "MENTORSHIP" });
+            const used = await getFeatureUsage(tenantId, "MENTORSHIP_SLOT");
             if (used >= maxSlots) {
               return sendError(res, "PLAN_LIMIT_MENTORSHIP_SLOTS", 403);
             }
@@ -152,9 +149,8 @@ export function checkPlanLimits({ resource } = { resource: "users" }) {
           // Mock interview slots share the same monthly cap pool as mentorship slots
           const maxSlots = f.maxMentorshipSlotsPerMonth != null ? Number(f.maxMentorshipSlotsPerMonth) : null;
           if (maxSlots !== null) {
-            const usedMentorship = await countThisMonth("SessionSlot", { tenantId, sessionType: "MENTORSHIP" });
-            const usedMock = await countThisMonth("SessionSlot", { tenantId, sessionType: "MOCK_INTERVIEW" });
-            if (usedMentorship + usedMock >= maxSlots) {
+            const usedMentorship = await getFeatureUsage(tenantId, "MENTORSHIP_SLOT");
+            if (usedMentorship >= maxSlots) {
               return sendError(res, "PLAN_LIMIT_MENTORSHIP_SLOTS", 403);
             }
           }
@@ -256,6 +252,26 @@ export async function decrementTenantStorage(tenantId, bytes) {
   try {
     const mb = bytes / (1024 * 1024);
     await Tenant.findByIdAndUpdate(tenantId, { $inc: { storageUsedMb: -mb }, $max: { storageUsedMb: 0 } });
+  } catch {
+    // Non-fatal
+  }
+}
+
+/**
+ * Increment a feature usage counter for the current month.
+ */
+export async function incrementFeatureUsage(tenantId, feature) {
+  if (!tenantId || !feature) return;
+  try {
+    const FeatureUsage = mongoose.connection.models.FeatureUsage;
+    if (FeatureUsage) {
+      const month = currentMonth();
+      await FeatureUsage.updateOne(
+        { tenantId, month, feature },
+        { $inc: { usageCount: 1 } },
+        { upsert: true }
+      );
+    }
   } catch {
     // Non-fatal
   }

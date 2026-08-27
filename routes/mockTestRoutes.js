@@ -105,13 +105,13 @@ router.get("/course/:courseId", requireDb, requireAuth, requireTenant, getMockTe
 
 router.get("/:id", requireDb, requireAuth, requireTenant, getMockTestById);
 
-router.post("/:id/start", requireDb, requireAuth, requireRole("STUDENT"), requireTenant, startMockTestAttempt);
+router.post("/:id/start", requireDb, requireAuth, requireRole("LEARNER", "STUDENT"), requireTenant, startMockTestAttempt);
 
 router.post(
   "/:id/submit",
   requireDb,
   requireAuth,
-  requireRole("STUDENT"),
+  requireRole("LEARNER", "STUDENT"),
   requireTenant,
   validateBody(submitSchema),
   submitMockTest

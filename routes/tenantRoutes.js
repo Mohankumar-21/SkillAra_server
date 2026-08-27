@@ -65,7 +65,7 @@ tenantRouter.post(
       .trim()
       .isLength({ min: 2, max: 40 })
       .matches(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/),
-    body("email").isEmail().normalizeEmail(),
+    body("email").isEmail().toLowerCase().trim(),
     body("planId")
       .isString()
       .trim()
@@ -130,7 +130,7 @@ tenantRouter.patch(
   },
   [
     body("tenant_name").optional().isString().trim().isLength({ min: 2, max: 80 }),
-    body("email").optional().isEmail().normalizeEmail(),
+    body("email").optional().isEmail().toLowerCase().trim(),
     body("planId").optional().matches(/^[0-9a-fA-F]{24}$/),
     body("status").optional().isBoolean(),
     body("subscriptionStatus").optional().isIn(["ACTIVE", "EXPIRED", "TRIAL"]),
