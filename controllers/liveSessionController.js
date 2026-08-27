@@ -4,6 +4,7 @@ import Enrollment from "../models/Enrollment.js";
 import { createMeeting } from "../services/liveSessionService.js";
 import { prepareResponseMsg, sendError } from "../utils/helper.js";
 import { getActor, canModerateCourses } from "../utils/actor.js";
+import { incrementFeatureUsage } from "../middlewares/checkPlanLimits.js";
 
 function toPublicSession(doc, { includeMeeting = false } = {}) {
   const s = doc.toObject ? doc.toObject() : doc;
@@ -53,6 +54,8 @@ export async function createLiveSession(req, res, next) {
       scheduledEnd: end,
       meeting,
     });
+
+    await incrementFeatureUsage(req.tenantId, "LIVE_SESSION");
 
     return res
       .status(201)

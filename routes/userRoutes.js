@@ -15,7 +15,7 @@ import {
   deleteUser,
   updateMyProfile,
 } from "../controllers/userController.js";
-import { requireAuth, requireRole, requireTenant } from "../middlewares/auth.js";
+import { requireAuth, requireTenant, requirePermission } from "../middlewares/auth.js";
 import { isTenantAdminUser } from "../utils/user.js";
 import { checkPlanLimits } from "../middlewares/checkPlanLimits.js";
 import { sendError } from "../utils/helper.js";
@@ -38,7 +38,6 @@ const createUserSchema = z.object({
     phone: z.string().trim().max(30).optional(),
     employeeId: z.string().trim().max(50).optional(),
     departmentId: objectId.nullable().optional(),
-    designationId: objectId.nullable().optional(),
     profilePhoto: z.string().max(500_000).optional(),
   });
 
@@ -50,7 +49,6 @@ const updateUserSchema = z
     phone: z.string().trim().max(30).optional(),
     employeeId: z.string().trim().max(50).optional(),
     departmentId: objectId.nullable().optional(),
-    designationId: objectId.nullable().optional(),
     profilePhoto: z.string().max(500_000).optional(),
   })
   .refine((data) => Object.keys(data).length > 0, { message: "No fields to update" });
@@ -81,8 +79,8 @@ router.get(
   "/",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN", "SUPER_ADMIN"),
   requireTenant,
+  requirePermission("users", "view"),
   listUsers
 );
 
@@ -101,8 +99,8 @@ router.get(
   "/students",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN", "TUTOR"),
   requireTenant,
+  requirePermission("learners", "view"),
   listStudents
 );
 
@@ -110,8 +108,8 @@ router.post(
   "/",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN", "SUPER_ADMIN"),
   requireTenant,
+  requirePermission("users", "create"),
   checkPlanLimits({ resource: "users" }),
   validate(createUserSchema),
   createUser
@@ -132,8 +130,8 @@ router.patch(
   "/:id/status",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN", "SUPER_ADMIN"),
   requireTenant,
+  requirePermission("users", "manage"),
   validate(statusSchema),
   updateUserStatus
 );
@@ -142,8 +140,8 @@ router.delete(
   "/:id",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN", "SUPER_ADMIN"),
   requireTenant,
+  requirePermission("users", "delete"),
   deleteUser
 );
 

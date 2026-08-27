@@ -8,7 +8,7 @@ import {
   listTenantRoles,
   updateTenantRole,
 } from "../controllers/roleController.js";
-import { requireAuth, requireRole, requireTenant } from "../middlewares/auth.js";
+import { requireAuth, requireTenant, requirePermission } from "../middlewares/auth.js";
 import { requireDb } from "../utils/db-state.js";
 import { validateBody } from "../utils/validate.js";
 
@@ -36,8 +36,8 @@ router.get(
   "/permission-modules",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
   requireTenant,
+  requirePermission("roles", "view"),
   getTenantPermissionModules
 );
 
@@ -45,8 +45,8 @@ router.get(
   "/",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
   requireTenant,
+  requirePermission("roles", "view"),
   listTenantRoles
 );
 
@@ -54,8 +54,8 @@ router.get(
   "/:id",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
   requireTenant,
+  requirePermission("roles", "view"),
   getTenantRole
 );
 
@@ -63,8 +63,8 @@ router.post(
   "/",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
   requireTenant,
+  requirePermission("roles", "create"),
   validateBody(createRoleSchema),
   createTenantRole
 );
@@ -73,8 +73,8 @@ router.patch(
   "/:id",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
   requireTenant,
+  requirePermission("roles", "edit"),
   validateBody(updateRoleSchema),
   updateTenantRole
 );
@@ -83,8 +83,8 @@ router.delete(
   "/:id",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
   requireTenant,
+  requirePermission("roles", "delete"),
   deleteTenantRole
 );
 

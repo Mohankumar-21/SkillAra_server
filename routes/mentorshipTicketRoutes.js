@@ -62,7 +62,7 @@ function validateBody(schema) {
 const STAFF = ["TENANT_ADMIN", "ORG_ADMIN"];
 const MENTOR_CAPABLE = ["TUTOR", "TENANT_ADMIN", "ORG_ADMIN"];
 
-router.post("/", requireDb, requireAuth, requireRole("STUDENT"), requireTenant, validateBody(createTicketSchema), createTicket);
+router.post("/", requireDb, requireAuth, requireRole("LEARNER", "STUDENT"), requireTenant, validateBody(createTicketSchema), createTicket);
 
 router.get("/queue", requireDb, requireAuth, requireRole(...MENTOR_CAPABLE), requireTenant, getQueue);
 router.get("/mine", requireDb, requireAuth, requireTenant, getMyTickets);

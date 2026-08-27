@@ -8,6 +8,7 @@ import UserProgress from "../models/UserProgress.js";
 import { generateQuiz, incrementAiUsage } from "../services/aiService.js";
 import { prepareResponseMsg } from "../utils/helper.js";
 import { getActor } from "../utils/actor.js";
+import { roleGrantsPermission } from "../services/roleService.js";
 import { recalculateMastery } from "../utils/progress.js";
 
 function normalizeAiQuestions(raw) {
@@ -172,7 +173,7 @@ export async function getQuizByLesson(req, res, next) {
       return res.status(404).send(prepareResponseMsg({}, false, "Quiz not found", 404));
     }
 
-    const isInstructor = ["TENANT_ADMIN", "TUTOR"].includes(req.user.role);
+    const isInstructor = req.role && roleGrantsPermission(req.role, "quizzes", "edit");
     const data = isInstructor ? sanitizeQuizForInstructor(quiz) : sanitizeQuizForStudent(quiz);
 
     return res.status(200).send(prepareResponseMsg({ quiz: data }, true, "Quiz fetched", 200));
@@ -188,7 +189,7 @@ export async function getQuizById(req, res, next) {
       return res.status(404).send(prepareResponseMsg({}, false, "Quiz not found", 404));
     }
 
-    const isInstructor = ["TENANT_ADMIN", "TUTOR"].includes(req.user.role);
+    const isInstructor = req.role && roleGrantsPermission(req.role, "quizzes", "edit");
     const data = isInstructor ? sanitizeQuizForInstructor(quiz) : sanitizeQuizForStudent(quiz);
 
     return res.status(200).send(prepareResponseMsg({ quiz: data }, true, "Quiz fetched", 200));

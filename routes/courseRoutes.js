@@ -35,10 +35,11 @@ import {
   addLessonAttachment,
   deleteLessonAttachment,
   getLessonPlaybackUrl,
+  getEnrollableUsers,
 } from "../controllers/courseController.js";
 import { authenticate, optionalAuthenticate } from "../middleware/authenticate.js";
 import { requireRole } from "../middleware/requireRole.js";
-import { requireTenant } from "../middlewares/auth.js";
+import { requireTenant, requirePermission } from "../middlewares/auth.js";
 import { checkPlanLimits } from "../middlewares/checkPlanLimits.js";
 import {
   uploadImage,
@@ -209,12 +210,12 @@ router.post(
 );
 
 router.get("/:id", ...browsing, getCourse);
-router.put("/:id", ...authoring, validateBody(updateCourseSchema), updateCourse);
-router.patch("/:id", ...authoring, validateBody(updateCourseSchema), updateCourse);
-router.delete("/:id", ...authoring, deleteCourse);
+router.put("/:id", ...authoring, requirePermission("courses", "edit"), validateBody(updateCourseSchema), updateCourse);
+router.patch("/:id", ...authoring, requirePermission("courses", "edit"), validateBody(updateCourseSchema), updateCourse);
+router.delete("/:id", ...authoring, requirePermission("courses", "delete"), deleteCourse);
 
-router.post("/:id/publish", ...authoring, publishCourse);
-router.post("/:id/unpublish", ...authoring, unpublishCourse);
+router.post("/:id/publish", ...authoring, requirePermission("courses", "publish"), publishCourse);
+router.post("/:id/unpublish", ...authoring, requirePermission("courses", "publish"), unpublishCourse);
 router.post("/:id/block", ...moderating, validateBody(blockSchema), blockCourse);
 router.post("/:id/unblock", ...moderating, unblockCourse);
 

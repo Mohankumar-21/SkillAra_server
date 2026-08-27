@@ -12,6 +12,7 @@ export { requireRole } from "../middleware/requireRole.js";
 export { requireTenantUser } from "../middleware/requireTenantUser.js";
 export { requireSuperadmin } from "../middleware/requireSuperadmin.js";
 export { scopeTenant } from "../middleware/scopeTenant.js";
+export { requirePermission } from "../middleware/requirePermission.js";
 import { sendError } from "../utils/helper.js";
 import { getRequestTenantId } from "../utils/requestTenant.js";
 

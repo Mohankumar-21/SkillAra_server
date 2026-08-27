@@ -39,31 +39,28 @@ export async function enrollInCourse(req, res, next) {
         .send(prepareResponseMsg({}, false, "Course not found or not published", 404));
     }
 
-    if (course.price > 0) {
-      return res
-        .status(402)
-        .send(prepareResponseMsg({}, false, "Payment required for this course", 402));
-    }
-
+    const isPaid = course.requiresPayment;
     const existing = await Enrollment.findOne({ userId, courseId });
     if (existing) {
-      if (existing.status === "DROPPED") {
-        existing.status = "ACTIVE";
-        existing.enrolledAt = new Date();
-        existing.completedAt = null;
-        await existing.save();
-        await Course.updateOne({ _id: courseId }, { $inc: { "stats.enrolledCount": 1 } });
-        return res
-          .status(200)
-          .send(
-            prepareResponseMsg(
-              { enrollment: toPublicEnrollment(existing) },
-              true,
-              "Re-enrolled successfully",
-              200
-            )
-          );
-      }
+        if (existing.status === "DROPPED") {
+          existing.status = isPaid ? "PENDING_PAYMENT" : "ACTIVE";
+          existing.enrolledAt = new Date();
+          existing.completedAt = null;
+          await existing.save();
+          if (!isPaid) {
+            await Course.updateOne({ _id: courseId }, { $inc: { "stats.enrolledCount": 1 } });
+          }
+          return res
+            .status(200)
+            .send(
+              prepareResponseMsg(
+                { enrollment: toPublicEnrollment(existing), paymentUrl: isPaid ? "https://sandbox.checkout.example.com/pay" : null },
+                true,
+                isPaid ? "Payment required to activate enrollment" : "Re-enrolled successfully",
+                200
+              )
+            );
+        }
       return res
         .status(409)
         .send(prepareResponseMsg({}, false, "Already enrolled in this course", 409));
@@ -73,24 +70,25 @@ export async function enrollInCourse(req, res, next) {
       userId,
       courseId,
       tenantId,
-      status: "ACTIVE",
+      status: isPaid ? "PENDING_PAYMENT" : "ACTIVE",
     });
 
-    await UserProgress.findOneAndUpdate(
-      { userId, courseId, tenantId },
-      { $setOnInsert: { completedLessons: [], quizScores: [], assignmentScores: [] } },
-      { upsert: true }
-    );
-
-    await Course.updateOne({ _id: courseId }, { $inc: { "stats.enrolledCount": 1 } });
+    if (!isPaid) {
+      await UserProgress.findOneAndUpdate(
+        { userId, courseId, tenantId },
+        { $setOnInsert: { completedLessons: [], quizScores: [], assignmentScores: [] } },
+        { upsert: true }
+      );
+      await Course.updateOne({ _id: courseId }, { $inc: { "stats.enrolledCount": 1 } });
+    }
 
     return res
       .status(201)
       .send(
         prepareResponseMsg(
-          { enrollment: toPublicEnrollment(enrollment) },
+          { enrollment: toPublicEnrollment(enrollment), paymentUrl: isPaid ? "https://sandbox.checkout.example.com/pay" : null },
           true,
-          "Enrolled successfully",
+          isPaid ? "Payment required to activate enrollment" : "Enrolled successfully",
           201
         )
       );

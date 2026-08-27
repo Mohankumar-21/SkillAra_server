@@ -111,6 +111,10 @@ const courseSchema = new mongoose.Schema(
       uppercase: true,
       default: "INR",
     },
+    requiresPayment: {
+      type: Boolean,
+      default: false,
+    },
     tags: [String],
     outcomes: [String],
     requirements: [String],

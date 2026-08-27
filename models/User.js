@@ -68,11 +68,6 @@ const userSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
-    designationId: {
-      type: mongoose.Schema.Types.ObjectId,
-      default: null,
-      index: true,
-    },
     profilePhoto: {
       type: String,
       default: "",
