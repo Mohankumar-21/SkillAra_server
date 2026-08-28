@@ -15,7 +15,7 @@ import {
   completeSlot,
   deleteSlot,
 } from "../controllers/bookingController.js";
-import { requireAuth, requireRole, requireTenant } from "../middlewares/auth.js";
+import { requireAuth, requirePermission, requireTenant } from "../middlewares/auth.js";
 import { checkPlanLimits } from "../middlewares/checkPlanLimits.js";
 import { prepareResponseMsg } from "../utils/helper.js";
 import { requireDb } from "../utils/db-state.js";
@@ -60,8 +60,8 @@ router.post(
   "/",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN", "TUTOR"),
   requireTenant,
+  requirePermission("mentorship", "host"),
   validateBody(createSlotSchema),
   checkPlanLimits({ resource: "session-slots" }),
   createSlot
@@ -74,14 +74,14 @@ router.get(
   "/all",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
   requireTenant,
+  requirePermission("mentorship", "manage"),
   getAllSlots
 );
 
 router.get("/my", requireDb, requireAuth, requireTenant, getMySlots);
 
-router.post("/:id/book", requireDb, requireAuth, requireRole("LEARNER", "STUDENT"), requireTenant, bookSlot);
+router.post("/:id/book", requireDb, requireAuth, requireTenant, requirePermission("mentorship", "create"), bookSlot);
 
 router.post("/:id/cancel", requireDb, requireAuth, requireTenant, validateBody(cancelSchema), cancelSlot);
 
@@ -89,8 +89,8 @@ router.post(
   "/:id/complete",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN", "TUTOR"),
   requireTenant,
+  requirePermission("mentorship", "host"),
   validateBody(completeSchema),
   completeSlot
 );
@@ -99,8 +99,8 @@ router.delete(
   "/:id",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN", "TUTOR"),
   requireTenant,
+  requirePermission("mentorship", "host"),
   deleteSlot
 );
 

@@ -4,29 +4,48 @@ import { verifyAccessToken as verifyNewAccessToken } from "../utils/tokens.js";
 import { verifyAccessToken as verifyLegacyAccessToken } from "../services/jwt.js";
 import { sendError } from "../utils/helper.js";
 
-function claimsToUser(decoded) {
+/**
+ * @param {object} decoded verified JWT claims
+ * @param {object|null} dbUser the tenant user row loaded during claim validation
+ */
+function claimsToUser(decoded, dbUser = null) {
   return {
     id: String(decoded.sub),
     tenantId: decoded.tenant_id ? String(decoded.tenant_id) : null,
     role: decoded.role,
     type: decoded.type,
+    /**
+     * Authorization is resolved from the role document, so roleId has to travel with the
+     * request. It is read from the database rather than the token on purpose: the row is
+     * already being loaded to validate the claims, and it means a role or permission change
+     * takes effect on the next request instead of at the next token refresh.
+     */
+    roleId: dbUser?.roleId ? String(dbUser.roleId) : null,
+    isTenantAdmin: Boolean(dbUser?.isTenantAdmin),
   };
 }
 
+/**
+ * @returns {{ok: boolean, user?: object}} the loaded tenant user, so the caller can put
+ *   roleId on req.user without a second query.
+ */
 async function validateNewTokenClaims(decoded) {
   if (decoded.type === "tenant_user") {
-    const user = await User.findById(decoded.sub).select("status tenantId role");
-    if (!user || user.status !== "active") return false;
-    if (String(user.tenantId) !== String(decoded.tenant_id)) return false;
-    return true;
+    const user = await User.findById(decoded.sub).select("status tenantId roleId isTenantAdmin");
+    if (!user || user.status !== "active") return { ok: false };
+    if (String(user.tenantId) !== String(decoded.tenant_id)) return { ok: false };
+    return { ok: true, user };
   }
 
   if (decoded.type === "superadmin") {
     const admin = await SuperAdmin.findById(decoded.sub).select("status email");
-    return Boolean(admin && admin.status === "active" && admin.email !== LEGACY_PLATFORM_CONFIG_EMAIL);
+    const ok = Boolean(
+      admin && admin.status === "active" && admin.email !== LEGACY_PLATFORM_CONFIG_EMAIL
+    );
+    return { ok };
   }
 
-  return false;
+  return { ok: false };
 }
 
 /**
@@ -42,10 +61,11 @@ export async function authenticate(req, res, next) {
 
   try {
     const decoded = verifyNewAccessToken(token);
-    if (!(await validateNewTokenClaims(decoded))) {
+    const validated = await validateNewTokenClaims(decoded);
+    if (!validated.ok) {
       return sendError(res, "GENERAL_UNAUTHORIZED", 401);
     }
-    req.user = claimsToUser(decoded);
+    req.user = claimsToUser(decoded, validated.user);
     return next();
   } catch {
     return sendError(res, "AUTH_SESSION_EXPIRED", 401);
@@ -63,8 +83,9 @@ export async function optionalAuthenticate(req, res, next) {
 
   try {
     const decoded = verifyNewAccessToken(token);
-    if (await validateNewTokenClaims(decoded)) {
-      req.user = claimsToUser(decoded);
+    const validated = await validateNewTokenClaims(decoded);
+    if (validated.ok) {
+      req.user = claimsToUser(decoded, validated.user);
     }
   } catch {
     // ignore invalid optional token
@@ -89,8 +110,9 @@ export async function authenticateLegacy(req, res, next) {
 
   try {
     const decoded = verifyNewAccessToken(token);
-    if (await validateNewTokenClaims(decoded)) {
-      req.user = claimsToUser(decoded);
+    const validated = await validateNewTokenClaims(decoded);
+    if (validated.ok) {
+      req.user = claimsToUser(decoded, validated.user);
       return next();
     }
   } catch {
@@ -123,8 +145,9 @@ export async function optionalAuthenticateLegacy(req, res, next) {
 
   try {
     const decoded = verifyNewAccessToken(token);
-    if (await validateNewTokenClaims(decoded)) {
-      req.user = claimsToUser(decoded);
+    const validated = await validateNewTokenClaims(decoded);
+    if (validated.ok) {
+      req.user = claimsToUser(decoded, validated.user);
       return next();
     }
   } catch {

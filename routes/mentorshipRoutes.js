@@ -10,7 +10,7 @@
 import express from "express";
 import { z } from "zod";
 import { upsertMentorProfile, listMentors, getMyMentorProfile } from "../controllers/mentorshipController.js";
-import { requireAuth, requireRole, requireTenant } from "../middlewares/auth.js";
+import { requireAuth, requirePermission, requireTenant } from "../middlewares/auth.js";
 import { checkPlanLimits } from "../middlewares/checkPlanLimits.js";
 import { prepareResponseMsg } from "../utils/helper.js";
 import { requireDb } from "../utils/db-state.js";
@@ -41,8 +41,8 @@ router.put(
   "/profile",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN", "TUTOR"),
   requireTenant,
+  requirePermission("mentorship", "host"),
   checkPlanLimits({ resource: "mentorship" }),
   validateBody(profileSchema),
   upsertMentorProfile
@@ -51,8 +51,8 @@ router.get(
   "/profile/me",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN", "TUTOR"),
   requireTenant,
+  requirePermission("mentorship", "view"),
   getMyMentorProfile
 );
 

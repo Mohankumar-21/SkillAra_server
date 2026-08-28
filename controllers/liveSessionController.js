@@ -34,9 +34,15 @@ export async function createLiveSession(req, res, next) {
     const actor = getActor(req);
     const { courseId, title, description, scheduledStart, scheduledEnd } = req.body;
 
-    const course = await Course.findOne({ _id: courseId, tenantId: req.tenantId });
-    if (!course) return sendError(res, "COURSE_NOT_FOUND", 404);
-    if (!(await assertCourseAccess(actor, course))) return sendError(res, "COURSE_FORBIDDEN", 403);
+    // Two kinds of session. Attached to a course: only someone who can write that course may
+    // schedule it, and attendance follows enrolment. Open (no courseId): a mentor or other
+    // host runs it for the whole organization — the permission to create is the only gate.
+    let course = null;
+    if (courseId) {
+      course = await Course.findOne({ _id: courseId, tenantId: req.tenantId });
+      if (!course) return sendError(res, "COURSE_NOT_FOUND", 404);
+      if (!(await assertCourseAccess(actor, course))) return sendError(res, "COURSE_FORBIDDEN", 403);
+    }
 
     const start = new Date(scheduledStart);
     const end = new Date(scheduledEnd);
@@ -46,8 +52,8 @@ export async function createLiveSession(req, res, next) {
 
     const session = await LiveSession.create({
       tenantId: req.tenantId,
-      courseId,
-      instructorId: course.instructorId,
+      courseId: course ? course._id : null,
+      instructorId: course ? course.instructorId : actor.id,
       title,
       description: description || "",
       scheduledStart: start,
@@ -84,19 +90,28 @@ export async function getAllLiveSessions(req, res, next) {
     if (canModerateCourses(actor)) {
       if (status) filter.status = status;
       if (courseId) filter.courseId = courseId;
-    } else if (actor.isInstructor) {
-      const courses = await Course.find({ tenantId: req.tenantId, instructorId: actor.id }).select("_id");
-      const courseIds = courses.map((c) => c._id);
-      filter.courseId = courseId ? courseIds.filter((id) => String(id) === courseId) : { $in: courseIds };
-      if (status) filter.status = status;
     } else {
-      const enrollments = await Enrollment.find({
-        userId: actor.id,
-        tenantId: req.tenantId,
-        status: { $in: ["ACTIVE", "COMPLETED"] },
-      }).select("courseId");
-      const courseIds = enrollments.map((e) => e.courseId);
-      filter.courseId = courseId ? courseIds.filter((id) => String(id) === courseId) : { $in: courseIds };
+      // Everyone additionally sees open sessions (courseId: null) and anything they host,
+      // on top of the course sessions their role entitles them to.
+      let courseIds;
+      if (actor.isInstructor) {
+        const courses = await Course.find({ tenantId: req.tenantId, instructorId: actor.id }).select("_id");
+        courseIds = courses.map((c) => c._id);
+      } else {
+        const enrollments = await Enrollment.find({
+          userId: actor.id,
+          tenantId: req.tenantId,
+          status: { $in: ["ACTIVE", "COMPLETED"] },
+        }).select("courseId");
+        courseIds = enrollments.map((e) => e.courseId);
+      }
+      if (courseId) courseIds = courseIds.filter((id) => String(id) === courseId);
+
+      filter.$or = [
+        { courseId: { $in: courseIds } },
+        { courseId: null },
+        { instructorId: actor.id },
+      ];
       if (status) filter.status = status;
     }
 
@@ -141,7 +156,8 @@ export async function joinLiveSession(req, res, next) {
     if (session.status === "CANCELLED") return sendError(res, "LIVE_SESSION_CANCELLED", 409);
 
     const isHost = String(session.instructorId) === String(actor.id);
-    if (!isHost && !canModerateCourses(actor)) {
+    // An open session has no course to be enrolled in — anyone in the tenant may join.
+    if (!isHost && !canModerateCourses(actor) && session.courseId) {
       const enrolled = await Enrollment.exists({
         userId: actor.id,
         courseId: session.courseId,

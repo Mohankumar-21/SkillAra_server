@@ -14,7 +14,7 @@ import {
   getMyAttempts,
   publishQuiz,
 } from "../controllers/quizController.js";
-import { requireAuth, requireRole, requireTenant } from "../middlewares/auth.js";
+import { requireAuth, requirePermission, requireTenant } from "../middlewares/auth.js";
 import { checkPlanLimits } from "../middlewares/checkPlanLimits.js";
 import { prepareResponseMsg } from "../utils/helper.js";
 import { requireDb } from "../utils/db-state.js";
@@ -75,8 +75,8 @@ router.post(
   "/",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "TUTOR"),
   requireTenant,
+  requirePermission("quizzes", "create"),
   validateBody(createQuizSchema),
   createQuiz
 );
@@ -85,8 +85,8 @@ router.post(
   "/generate",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "TUTOR"),
   requireTenant,
+  requirePermission("quizzes", "create"),
   checkPlanLimits({ resource: "ai:quiz" }),
   validateBody(generateQuizSchema),
   generateAndSaveQuiz
@@ -106,8 +106,8 @@ router.post(
   "/:id/submit",
   requireDb,
   requireAuth,
-  requireRole("LEARNER", "STUDENT"),
   requireTenant,
+  requirePermission("quizzes", "attempt"),
   validateBody(submitSchema),
   submitQuiz
 );
@@ -118,8 +118,8 @@ router.patch(
   "/:id/publish",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "TUTOR"),
   requireTenant,
+  requirePermission("quizzes", "publish"),
   publishQuiz
 );
 

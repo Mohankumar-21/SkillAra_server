@@ -126,7 +126,7 @@ const platformRoleCreateSchema = z.object({
   name: z.string().trim().min(2).max(80),
   description: z.string().trim().max(500).optional(),
   status: z.enum(["active", "inactive"]).optional(),
-  permissions: z.record(z.array(z.string())).optional(),
+  permissions: z.record(z.string(), z.array(z.string())).optional(),
 });
 
 const platformRoleUpdateSchema = z
@@ -134,7 +134,7 @@ const platformRoleUpdateSchema = z
     name: z.string().trim().min(2).max(80).optional(),
     description: z.string().trim().max(500).optional(),
     status: z.enum(["active", "inactive"]).optional(),
-    permissions: z.record(z.array(z.string())).optional(),
+    permissions: z.record(z.string(), z.array(z.string())).optional(),
   })
   .refine((data) => Object.keys(data).length > 0, { message: "No fields to update" });
 

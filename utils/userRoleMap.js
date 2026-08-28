@@ -10,6 +10,9 @@ const ROLE_TO_DB = {
   INSTRUCTOR: "instructor",
   student: "student",
   STUDENT: "student",
+  // The seeded Learner role reports LEARNER; it is the same DB bucket as student.
+  learner: "student",
+  LEARNER: "student",
 };
 
 const ROLE_TO_API = {

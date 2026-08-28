@@ -30,9 +30,9 @@ async function seedFixtures() {
   await seedTenantRoles(tenantA._id);
   await seedTenantRoles(tenantB._id);
 
-  const studentRoleA = await getTenantRoleBySlug(tenantA._id, "student");
+  const studentRoleA = await getTenantRoleBySlug(tenantA._id, "learner");
   const ownerRoleA = await getTenantRoleBySlug(tenantA._id, "organization-owner");
-  const studentRoleB = await getTenantRoleBySlug(tenantB._id, "student");
+  const studentRoleB = await getTenantRoleBySlug(tenantB._id, "learner");
 
   const passwordHash = await hashPassword(PASSWORD);
 

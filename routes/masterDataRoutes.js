@@ -9,7 +9,7 @@ import {
   updateMasterDataItem,
 } from "../controllers/masterDataController.js";
 import { MASTER_DATA_CATEGORY_KEYS } from "../data/masterDataCatalog.js";
-import { requireAuth, requireRole, requireTenant } from "../middlewares/auth.js";
+import { requireAuth, requirePermission, requireTenant } from "../middlewares/auth.js";
 import { requireDb } from "../utils/db-state.js";
 import { validateBody } from "../utils/validate.js";
 
@@ -48,8 +48,8 @@ router.get(
   "/categories",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
   requireTenant,
+  requirePermission("org-settings", "view"),
   getMasterCategories
 );
 
@@ -57,8 +57,8 @@ router.get(
   "/",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
   requireTenant,
+  requirePermission("org-settings", "view"),
   listMasterData
 );
 
@@ -66,8 +66,8 @@ router.get(
   "/:id",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
   requireTenant,
+  requirePermission("org-settings", "view"),
   getMasterDataItem
 );
 
@@ -75,8 +75,8 @@ router.post(
   "/",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
   requireTenant,
+  requirePermission("org-settings", "edit"),
   validateBody(createSchema),
   createMasterDataItem
 );
@@ -85,8 +85,8 @@ router.patch(
   "/:id",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
   requireTenant,
+  requirePermission("org-settings", "edit"),
   validateBody(updateSchema),
   updateMasterDataItem
 );
@@ -95,8 +95,8 @@ router.delete(
   "/:id",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
   requireTenant,
+  requirePermission("org-settings", "manage"),
   deleteMasterDataItem
 );
 

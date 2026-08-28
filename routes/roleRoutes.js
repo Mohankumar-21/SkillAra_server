@@ -14,7 +14,14 @@ import { validateBody } from "../utils/validate.js";
 
 const router = express.Router();
 
-const permissionsSchema = z.record(z.array(z.string()));
+/**
+ * { moduleId: [action, ...] }.
+ *
+ * Both arguments are required: in Zod 4 a single-argument z.record() reads that schema as
+ * the KEY type, so z.record(z.array(z.string())) rejected every module id as an invalid key
+ * and made all role create/update calls carrying permissions fail validation.
+ */
+const permissionsSchema = z.record(z.string(), z.array(z.string()));
 
 const createRoleSchema = z.object({
   name: z.string().trim().min(2).max(80),

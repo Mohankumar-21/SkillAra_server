@@ -1,6 +1,25 @@
 import mongoose from "mongoose";
 
 export const COURSE_STATUSES = ["DRAFT", "PUBLISHED", "ARCHIVED"];
+
+/**
+ * Content-review lifecycle, independent of `status`.
+ *
+ *   NOT_SUBMITTED ──submit──▶ PENDING ──approve──▶ APPROVED ──publish──▶ (approval consumed)
+ *                                │
+ *                                └─request changes──▶ CHANGES_REQUESTED ──submit──▶ PENDING
+ *
+ * A course can only be published from APPROVED. Unpublishing resets the course to
+ * NOT_SUBMITTED so the next publish goes through review again.
+ */
+export const COURSE_REVIEW_STATUSES = [
+  "NOT_SUBMITTED",
+  "PENDING",
+  "CHANGES_REQUESTED",
+  "APPROVED",
+];
+
+export const COURSE_REVIEW_ACTIONS = ["submitted", "changes_requested", "approved", "reset"];
 export const COURSE_LEVELS = ["BEGINNER", "INTERMEDIATE", "ADVANCED", "ALL_LEVELS"];
 
 /**
@@ -15,6 +34,38 @@ const moderationSchema = new mongoose.Schema(
     reason: { type: String, default: "" },
     blockedBy: { type: mongoose.Schema.Types.ObjectId, default: null },
     blockedAt: { type: Date, default: null },
+  },
+  { _id: false }
+);
+
+/** Append-only audit trail of every review decision on a course. */
+const reviewEventSchema = new mongoose.Schema(
+  {
+    action: { type: String, enum: COURSE_REVIEW_ACTIONS, required: true },
+    actorId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    actorName: { type: String, default: "" },
+    note: { type: String, default: "", trim: true },
+    at: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
+const reviewSchema = new mongoose.Schema(
+  {
+    status: {
+      type: String,
+      enum: COURSE_REVIEW_STATUSES,
+      default: "NOT_SUBMITTED",
+    },
+    /** Content reviewer the instructor assigned this course to. */
+    reviewerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    submittedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    submittedAt: { type: Date, default: null },
+    decidedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    decidedAt: { type: Date, default: null },
+    /** Most recent reviewer note — plagiarism findings, requested changes, or approval remarks. */
+    note: { type: String, default: "", trim: true },
+    history: { type: [reviewEventSchema], default: () => [] },
   },
   { _id: false }
 );
@@ -87,6 +138,10 @@ const courseSchema = new mongoose.Schema(
       type: moderationSchema,
       default: () => ({}),
     },
+    review: {
+      type: reviewSchema,
+      default: () => ({}),
+    },
     modules: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -135,6 +190,8 @@ const courseSchema = new mongoose.Schema(
 courseSchema.index({ tenantId: 1, status: 1, created_on: -1 });
 /** "My courses" for an instructor. */
 courseSchema.index({ tenantId: 1, instructorId: 1, created_on: -1 });
+/** A reviewer's queue: courses assigned to them, newest submission first. */
+courseSchema.index({ tenantId: 1, "review.reviewerId": 1, "review.status": 1, "review.submittedAt": -1 });
 courseSchema.index({ tenantId: 1, category: 1 });
 
 /** Visible to learners only when published and not blocked by an admin. */
