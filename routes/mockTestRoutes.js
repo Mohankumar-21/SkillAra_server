@@ -16,7 +16,7 @@ import {
   getMyMockTestAttempts,
   publishMockTest,
 } from "../controllers/mockTestController.js";
-import { requireAuth, requireRole, requireTenant } from "../middlewares/auth.js";
+import { requireAuth, requirePermission, requireTenant } from "../middlewares/auth.js";
 import { checkPlanLimits } from "../middlewares/checkPlanLimits.js";
 import { prepareResponseMsg } from "../utils/helper.js";
 import { requireDb } from "../utils/db-state.js";
@@ -80,8 +80,8 @@ router.post(
   "/",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN", "TUTOR"),
   requireTenant,
+  requirePermission("mock-tests", "create"),
   validateBody(createSchema),
   createMockTest
 );
@@ -90,8 +90,8 @@ router.post(
   "/generate",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN", "TUTOR"),
   requireTenant,
+  requirePermission("mock-tests", "create"),
   checkPlanLimits({ resource: "ai:quiz" }),
   validateBody(generateSchema),
   generateAndSaveMockTest
@@ -105,14 +105,14 @@ router.get("/course/:courseId", requireDb, requireAuth, requireTenant, getMockTe
 
 router.get("/:id", requireDb, requireAuth, requireTenant, getMockTestById);
 
-router.post("/:id/start", requireDb, requireAuth, requireRole("LEARNER", "STUDENT"), requireTenant, startMockTestAttempt);
+router.post("/:id/start", requireDb, requireAuth, requireTenant, requirePermission("mock-tests", "attempt"), startMockTestAttempt);
 
 router.post(
   "/:id/submit",
   requireDb,
   requireAuth,
-  requireRole("LEARNER", "STUDENT"),
   requireTenant,
+  requirePermission("mock-tests", "attempt"),
   validateBody(submitSchema),
   submitMockTest
 );
@@ -123,8 +123,8 @@ router.patch(
   "/:id/publish",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN", "TUTOR"),
   requireTenant,
+  requirePermission("mock-tests", "publish"),
   publishMockTest
 );
 

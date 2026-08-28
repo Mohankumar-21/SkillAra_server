@@ -14,7 +14,7 @@ import {
   approveOwnershipTransferRequest,
   rejectOwnershipTransferRequest,
 } from "../controllers/ownershipTransferController.js";
-import { requireAuth, requireRole, requireTenant } from "../middlewares/auth.js";
+import { requireAuth, requireOwner, requireRole, requireTenant } from "../middlewares/auth.js";
 import { requireDb } from "../utils/db-state.js";
 import { prepareResponseMsg } from "../utils/helper.js";
 
@@ -58,8 +58,8 @@ router.get(
   "/eligible-targets",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN"),
   requireTenant,
+  requireOwner,
   listEligibleOwnershipTargets
 );
 
@@ -67,8 +67,8 @@ router.get(
   "/my",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN"),
   requireTenant,
+  requireOwner,
   listMyOwnershipTransferRequests
 );
 
@@ -76,8 +76,8 @@ router.post(
   "/",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN"),
   requireTenant,
+  requireOwner,
   validate(createSchema),
   createOwnershipTransferRequest
 );
@@ -86,8 +86,8 @@ router.post(
   "/:id/cancel",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN"),
   requireTenant,
+  requireOwner,
   cancelOwnershipTransferRequest
 );
 

@@ -1,7 +1,7 @@
 import express from "express";
 import { uploadImage } from "../middlewares/upload.js";
 import { uploadTenantLogo, uploadUserAvatar } from "../controllers/storageController.js";
-import { requireAuth, requireRole, requireTenant } from "../middlewares/auth.js";
+import { requireAuth, requirePermission, requireTenant } from "../middlewares/auth.js";
 import { checkPlanLimits } from "../middlewares/checkPlanLimits.js";
 import { requireDb } from "../utils/db-state.js";
 
@@ -12,8 +12,8 @@ router.post(
   "/branding/logo",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
   requireTenant,
+  requirePermission("branding", "edit"),
   checkPlanLimits({ resource: "storage" }),
   uploadImage.single("file"),
   uploadTenantLogo
@@ -35,8 +35,8 @@ router.post(
   "/users/:userId/avatar",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
   requireTenant,
+  requirePermission("users", "edit"),
   checkPlanLimits({ resource: "storage" }),
   uploadImage.single("file"),
   uploadUserAvatar

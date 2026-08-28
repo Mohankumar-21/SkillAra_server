@@ -11,8 +11,12 @@ import {
   getCourseEnrollments,
   dropEnrollment,
   bulkEnrollStudents,
+  listEnrollmentRequests,
+  decideEnrollmentRequest,
+  grantCourseAccess,
+  getUserEnrollments,
 } from "../controllers/enrollmentController.js";
-import { requireAuth, requireRole, requireTenant } from "../middlewares/auth.js";
+import { requireAuth, requirePermission, requireTenant } from "../middlewares/auth.js";
 import { prepareResponseMsg } from "../utils/helper.js";
 import { requireDb } from "../utils/db-state.js";
 
@@ -22,7 +26,13 @@ const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid id");
 
 const enrollSchema = z.object({
   courseId: objectId,
+  /** Optional message from the learner when a paid course needs approval. */
+  note: z.string().trim().max(1000).optional(),
 });
+
+const decisionSchema = z.object({ note: z.string().trim().max(1000).optional() });
+
+const grantSchema = z.object({ userId: objectId, courseId: objectId });
 
 const bulkEnrollSchema = z.object({
   courseId: objectId,
@@ -44,7 +54,10 @@ function validateBody(schema) {
   };
 }
 
-/** Path 1 — a learner enrols themselves. */
+/**
+ * Path 1 — a learner enrols themselves.
+ * Free course: active immediately. Paid course: recorded as a request for staff to approve.
+ */
 router.post(
   "/",
   requireDb,
@@ -59,20 +72,72 @@ router.post(
   "/bulk",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN", "TUTOR"),
   requireTenant,
+  requirePermission("learners", "assign"),
   validateBody(bulkEnrollSchema),
   bulkEnrollStudents
 );
 
 router.get("/my", requireDb, requireAuth, requireTenant, getMyEnrollments);
 
+/* --------------------- paid-course access requests (staff) --------------------- */
+
+router.get(
+  "/requests",
+  requireDb,
+  requireAuth,
+  requireTenant,
+  requirePermission("learners", "assign"),
+  listEnrollmentRequests
+);
+
+router.post(
+  "/requests/:id/approve",
+  requireDb,
+  requireAuth,
+  requireTenant,
+  requirePermission("learners", "assign"),
+  validateBody(decisionSchema),
+  decideEnrollmentRequest
+);
+
+router.post(
+  "/requests/:id/reject",
+  requireDb,
+  requireAuth,
+  requireTenant,
+  requirePermission("learners", "assign"),
+  validateBody(decisionSchema),
+  decideEnrollmentRequest
+);
+
+/** Staff view of one learner's course access, for the admin user panel. */
+router.get(
+  "/user/:userId",
+  requireDb,
+  requireAuth,
+  requireTenant,
+  requirePermission("learners", "view"),
+  getUserEnrollments
+);
+
+/** Staff give one learner access to one course directly, without a request. */
+router.post(
+  "/grant",
+  requireDb,
+  requireAuth,
+  requireTenant,
+  requirePermission("learners", "assign"),
+  validateBody(grantSchema),
+  grantCourseAccess
+);
+
 router.get(
   "/course/:courseId",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN", "TUTOR"),
   requireTenant,
+  requirePermission("learners", "view"),
   getCourseEnrollments
 );
 

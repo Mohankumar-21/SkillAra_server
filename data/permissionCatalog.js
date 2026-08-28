@@ -4,18 +4,18 @@ export const TENANT_PERMISSION_MODULES = [
   { id: "dashboard", label: "Dashboard", actions: ["view", "export"] },
   { id: "users", label: "Users", actions: ["view", "create", "edit", "delete", "assign", "export", "import", "manage"] },
   { id: "roles", label: "Roles & Permissions", actions: ["view", "create", "edit", "delete", "clone", "assign", "configure", "manage"] },
-  { id: "courses", label: "Courses", actions: ["view", "create", "edit", "delete", "publish", "archive", "assign", "export", "approve"] },
+  { id: "courses", label: "Courses", actions: ["view", "create", "edit", "delete", "publish", "archive", "assign", "export", "approve", "submit", "moderate"] },
   { id: "course-categories", label: "Course Categories", actions: ["view", "create", "edit", "delete", "manage"] },
   { id: "course-modules", label: "Course Modules", actions: ["view", "create", "edit", "delete", "publish", "archive"] },
   { id: "lessons", label: "Lessons", actions: ["view", "create", "edit", "delete", "publish", "archive", "approve"] },
   { id: "assignments", label: "Assignments", actions: ["view", "create", "edit", "delete", "assign", "approve", "export"] },
   { id: "question-bank", label: "Question Bank", actions: ["view", "create", "edit", "delete", "import", "export", "manage"] },
-  { id: "quizzes", label: "Quizzes", actions: ["view", "create", "edit", "delete", "publish", "assign", "approve"] },
-  { id: "mock-tests", label: "Mock Tests", actions: ["view", "create", "edit", "delete", "publish", "assign", "approve"] },
+  { id: "quizzes", label: "Quizzes", actions: ["view", "create", "edit", "delete", "publish", "assign", "approve", "attempt"] },
+  { id: "mock-tests", label: "Mock Tests", actions: ["view", "create", "edit", "delete", "publish", "assign", "approve", "attempt"] },
   { id: "mock-interviews", label: "Mock Interviews", actions: ["view", "create", "edit", "delete", "manage"] },
   { id: "live-sessions", label: "Live Sessions", actions: ["view", "create", "edit", "delete", "manage"] },
   { id: "certificates", label: "Certificates", actions: ["view", "create", "edit", "delete", "approve", "export"] },
-  { id: "mentorship", label: "Mentorship", actions: ["view", "create", "edit", "delete", "assign", "claim", "close", "manage"] },
+  { id: "mentorship", label: "Mentorship", actions: ["view", "create", "edit", "delete", "assign", "claim", "close", "manage", "host"] },
   { id: "learners", label: "Learners", actions: ["view", "create", "edit", "delete", "assign", "export"] },
   { id: "instructors", label: "Instructors", actions: ["view", "create", "edit", "delete", "assign", "manage"] },
   { id: "mentors", label: "Mentors", actions: ["view", "create", "edit", "delete", "assign"] },
@@ -70,20 +70,61 @@ function readOnlyPermissions(modules) {
   return perms;
 }
 
+/**
+ * What everyone in the organization gets, whatever their job.
+ *
+ * These are colleagues, not customers: a mentor or a content reviewer should be able to open
+ * the catalog, watch a lesson, read the forum and see their notifications without anyone
+ * granting it. Role-specific powers are unioned on top, never replaced — a role can only
+ * ever have MORE than this baseline.
+ */
+function baseAccess() {
+  return {
+    dashboard: ["view"],
+    courses: ["view"],
+    "course-categories": ["view"],
+    "course-modules": ["view"],
+    lessons: ["view"],
+    assignments: ["view"],
+    quizzes: ["view"],
+    "mock-tests": ["view"],
+    "mock-interviews": ["view"],
+    "live-sessions": ["view"],
+    certificates: ["view"],
+    mentorship: ["view", "create"],
+    community: ["view", "create"],
+    forum: ["view", "create"],
+    notifications: ["view"],
+    // Deliberately NOT here: learners and instructors are staff directories. A learner must
+    // not be able to list who else is enrolled just because they can open the catalog.
+  };
+}
+
+/** Union the baseline with a role's own grants; the role's actions always win by addition. */
+function withBaseAccess(permissions) {
+  const merged = { ...baseAccess() };
+  for (const [moduleId, actions] of Object.entries(permissions)) {
+    merged[moduleId] = [...new Set([...(merged[moduleId] || []), ...actions])];
+  }
+  return merged;
+}
+
 function instructorPermissions() {
   return {
     dashboard: ["view"],
-    courses: ["view", "create", "edit", "publish", "archive"],
-    "course-modules": ["view", "create", "edit", "publish"],
-    lessons: ["view", "create", "edit", "publish"],
+    courses: ["view", "create", "edit", "publish", "archive", "submit"],
+    "course-categories": ["view"],
+    "course-modules": ["view", "create", "edit", "delete", "publish"],
+    lessons: ["view", "create", "edit", "delete", "publish"],
     assignments: ["view", "create", "edit", "assign", "approve"],
+    "question-bank": ["view", "create", "edit"],
     quizzes: ["view", "create", "edit", "publish", "assign"],
     "mock-tests": ["view", "create", "edit", "publish"],
     "mock-interviews": ["view", "create", "edit", "manage"],
     "live-sessions": ["view", "create", "edit", "manage"],
     learners: ["view", "assign"],
     instructors: ["view"],
-    mentorship: ["view", "assign", "claim", "close"],
+    mentorship: ["view", "create", "edit", "delete", "assign", "claim", "close", "host"],
     forum: ["view", "create", "edit", "moderate"],
     notifications: ["view", "create"],
     reports: ["view", "export"],
@@ -97,8 +138,8 @@ function learnerPermissions() {
     courses: ["view"],
     lessons: ["view"],
     assignments: ["view"],
-    quizzes: ["view"],
-    "mock-tests": ["view"],
+    quizzes: ["view", "attempt"],
+    "mock-tests": ["view", "attempt"],
     "mock-interviews": ["view"],
     "live-sessions": ["view"],
     certificates: ["view"],
@@ -114,16 +155,37 @@ function orgAdminPermissions() {
     ...readOnlyPermissions(TENANT_PERMISSION_MODULES),
     users: ["view", "create", "edit", "assign", "export", "manage"],
     roles: ["view", "create", "edit", "clone", "assign"],
-    courses: ["view", "create", "edit", "delete", "publish", "archive", "assign"],
-    "org-settings": ["view", "edit", "configure"],
-    branding: ["view", "edit"],
+    courses: ["view", "create", "edit", "delete", "publish", "archive", "assign", "approve", "submit", "moderate"],
+    "course-categories": ["view", "create", "edit", "delete", "manage"],
+    "course-modules": ["view", "create", "edit", "delete", "publish"],
+    lessons: ["view", "create", "edit", "delete", "publish", "approve"],
+    assignments: ["view", "create", "edit", "delete", "assign", "approve", "export"],
+    "mock-tests": ["view", "create", "edit", "publish"],
+    "mock-interviews": ["view", "create", "edit", "manage"],
+    "live-sessions": ["view", "create", "edit", "delete", "manage"],
+    certificates: ["view", "create", "edit", "approve", "export"],
+    mentorship: ["view", "create", "edit", "delete", "assign", "claim", "close", "manage", "host"],
+    learners: ["view", "create", "edit", "assign", "export"],
+    instructors: ["view", "create", "edit", "assign", "manage"],
+    mentors: ["view", "create", "edit", "assign"],
+    community: ["view", "moderate", "manage"],
+    forum: ["view", "approve", "moderate"],
+    notifications: ["view", "create", "edit", "configure"],
+    "org-settings": ["view", "edit", "configure", "manage"],
+    branding: ["view", "edit", "configure"],
     reports: ["view", "export"],
     analytics: ["view"],
     "audit-logs": ["view", "export"],
   };
 }
 
-/** Default tenant system roles seeded per organization. */
+/**
+ * Default tenant system roles seeded per organization.
+ *
+ * `permissions` is the ONLY thing that grants access — every tenant route is gated by
+ * requirePermission(moduleId, action). `legacyRole` / `legacyApiRole` are display and
+ * client-routing hints carried in the JWT; they are never consulted for authorization.
+ */
 export const TENANT_ROLE_SEEDS = [
   {
     slug: "organization-owner",
@@ -144,7 +206,7 @@ export const TENANT_ROLE_SEEDS = [
     protected: true,
     legacyRole: "org_admin",
     legacyApiRole: "ORG_ADMIN",
-    permissions: orgAdminPermissions(),
+    permissions: withBaseAccess(orgAdminPermissions()),
   },
   {
     slug: "instructor",
@@ -154,7 +216,7 @@ export const TENANT_ROLE_SEEDS = [
     protected: true,
     legacyRole: "instructor",
     legacyApiRole: "TUTOR",
-    permissions: instructorPermissions(),
+    permissions: withBaseAccess(instructorPermissions()),
   },
   {
     slug: "learner",
@@ -163,8 +225,8 @@ export const TENANT_ROLE_SEEDS = [
     roleType: "system",
     protected: true,
     legacyRole: "student",
-    legacyApiRole: "LEARNER",
-    permissions: learnerPermissions(),
+    legacyApiRole: "STUDENT",
+    permissions: withBaseAccess(learnerPermissions()),
   },
   {
     slug: "teaching-assistant",
@@ -174,14 +236,15 @@ export const TENANT_ROLE_SEEDS = [
     protected: true,
     legacyRole: "instructor",
     legacyApiRole: "TUTOR",
-    permissions: {
-      dashboard: ["view"],
+    permissions: withBaseAccess({
       courses: ["view", "edit"],
+      "course-modules": ["view", "create", "edit"],
       lessons: ["view", "create", "edit"],
       assignments: ["view", "edit", "assign"],
+      "question-bank": ["view", "create", "edit"],
       quizzes: ["view", "edit"],
       learners: ["view", "assign"],
-    },
+    }),
   },
   {
     slug: "mentor",
@@ -191,13 +254,15 @@ export const TENANT_ROLE_SEEDS = [
     protected: true,
     legacyRole: "instructor",
     legacyApiRole: "TUTOR",
-    permissions: {
-      dashboard: ["view"],
-      mentorship: ["view", "create", "edit", "assign", "claim", "close", "manage"],
+    permissions: withBaseAccess({
+      // No "manage": that is org-wide ticket oversight and the admin mentorship dashboard,
+      // which belongs to admins. A mentor works their own queue — claim, close, assign, host.
+      mentorship: ["view", "create", "edit", "delete", "assign", "claim", "close", "host"],
       "mock-interviews": ["view", "create", "edit", "manage"],
+      "live-sessions": ["view", "create", "edit", "manage"],
       learners: ["view", "assign"],
       notifications: ["view", "create"],
-    },
+    }),
   },
   {
     slug: "support",
@@ -205,34 +270,31 @@ export const TENANT_ROLE_SEEDS = [
     description: "Handles user support and community moderation.",
     roleType: "system",
     protected: true,
-    legacyRole: "student",
-    legacyApiRole: "STUDENT",
-    permissions: {
-      dashboard: ["view"],
+    legacyRole: "instructor",
+    legacyApiRole: "TUTOR",
+    permissions: withBaseAccess({
       users: ["view"],
-      learners: ["view"],
       community: ["view", "moderate", "manage"],
       forum: ["view", "moderate", "approve"],
       notifications: ["view", "create"],
-    },
+    }),
   },
   {
     slug: "content-reviewer",
     name: "Content Reviewer",
-    description: "Reviews and approves course content before publishing.",
+    description: "Reviews course content for plagiarism and quality, then approves it for publishing.",
     roleType: "system",
     protected: true,
-    legacyRole: "student",
-    legacyApiRole: "STUDENT",
-    permissions: {
-      dashboard: ["view"],
+    legacyRole: "instructor",
+    legacyApiRole: "TUTOR",
+    permissions: withBaseAccess({
       courses: ["view", "approve", "archive"],
       lessons: ["view", "approve"],
       assignments: ["view", "approve"],
       quizzes: ["view", "approve"],
       "mock-tests": ["view", "approve"],
       certificates: ["view", "approve"],
-    },
+    }),
   },
 ];
 

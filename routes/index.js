@@ -26,6 +26,7 @@ import mentorshipRouter from "./mentorshipRoutes.js";
 import mentorshipTicketRouter from "./mentorshipTicketRoutes.js";
 import liveSessionRouter from "./liveSessionRoutes.js";
 import storageRouter from "./storageRoutes.js";
+import notificationRouter from "./notificationRoutes.js";
 const router = express.Router();
 
 router.use("/auth", authRouter);
@@ -46,6 +47,7 @@ router.use("/forum", forumRouter);
 router.use("/mentorship", mentorshipRouter);
 router.use("/mentorship-tickets", mentorshipTicketRouter);
 router.use("/live-sessions", liveSessionRouter);
+router.use("/notifications", notificationRouter);
 router.use("/admin/analytics", analyticsRoutes);
 router.use("/student/dashboard", studentDashboardRoutes); // Student dashboard endpoint
 router.use("/tenants", tenantRouter);

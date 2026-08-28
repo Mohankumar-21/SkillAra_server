@@ -18,7 +18,7 @@ import {
   moderateQuestion,
   moderateAnswer,
 } from "../controllers/forumController.js";
-import { requireAuth, requireRole, requireTenant } from "../middlewares/auth.js";
+import { requireAuth, requirePermission, requireTenant } from "../middlewares/auth.js";
 import { checkPlanLimits } from "../middlewares/checkPlanLimits.js";
 import { prepareResponseMsg } from "../utils/helper.js";
 import { requireDb } from "../utils/db-state.js";
@@ -69,8 +69,8 @@ router.patch(
   "/questions/:id/moderate",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
   requireTenant,
+  requirePermission("forum", "moderate"),
   validateBody(moderateSchema),
   moderateQuestion
 );
@@ -83,8 +83,8 @@ router.patch(
   "/answers/:id/moderate",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN"),
   requireTenant,
+  requirePermission("forum", "moderate"),
   validateBody(moderateSchema),
   moderateAnswer
 );

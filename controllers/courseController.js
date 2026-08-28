@@ -12,6 +12,8 @@
 import mongoose from "mongoose";
 
 import Course from "../models/Course.js";
+import Tenant from "../models/Tenant.js";
+import User from "../models/User.js";
 import Module from "../models/Module.js";
 import Lesson from "../models/Lesson.js";
 import Enrollment from "../models/Enrollment.js";
@@ -32,12 +34,25 @@ import {
   DOWNLOAD_URL_TTL_SECONDS,
 } from "../services/storageService.js";
 import { incrementTenantStorage, decrementTenantStorage } from "../middlewares/checkPlanLimits.js";
+import { notifyUsers } from "../services/notificationService.js";
+import { usersWithPermission } from "../services/roleService.js";
 
 const isObjectId = (value) => mongoose.Types.ObjectId.isValid(String(value || ""));
 
 /* ------------------------------------------------------------------ *
  * Access helpers
  * ------------------------------------------------------------------ */
+
+/**
+ * True when this actor is the content reviewer the course is currently assigned to.
+ *
+ * A reviewer is usually neither an instructor nor an admin, so without this they would fail
+ * every ownership check and could not open the draft they were asked to review.
+ */
+function isAssignedReviewer(course, actor) {
+  const reviewerId = course?.review?.reviewerId;
+  return Boolean(actor?.id && reviewerId && String(reviewerId) === String(actor.id));
+}
 
 /**
  * Load a course the actor is allowed to *modify*.
@@ -65,30 +80,21 @@ async function loadWritableCourse(courseId, tenantId, actor) {
 async function loadReadableCourse(courseId, tenantId, actor) {
   if (!isObjectId(courseId)) return { error: "COURSE_INVALID_ID", status: 400 };
 
-  const filter = { _id: courseId, tenantId };
-  // Instructors are let past the status filter here so they can open their own drafts;
-  // the ownership check below then hides other instructors' unpublished work.
-  const privileged = canModerateCourses(actor) || Boolean(actor?.isInstructor);
-
-  if (!privileged) {
-    filter.status = "PUBLISHED";
-    filter["moderation.isBlocked"] = { $ne: true };
-  }
-
-  const course = await Course.findOne(filter);
+  const course = await Course.findOne({ _id: courseId, tenantId });
   if (!course) return { error: "COURSE_NOT_FOUND", status: 404 };
 
-  // An instructor may see their own drafts, but other instructors' drafts stay hidden.
-  if (
-    actor?.isInstructor &&
-    !canModerateCourses(actor) &&
-    String(course.instructorId) !== String(actor.id) &&
-    (course.status !== "PUBLISHED" || course.moderation?.isBlocked)
-  ) {
-    return { error: "COURSE_NOT_FOUND", status: 404 };
-  }
+  // Live courses are readable by anyone in the tenant, signed in or not.
+  const isLive = course.status === "PUBLISHED" && !course.moderation?.isBlocked;
+  if (isLive) return { course };
 
-  return { course };
+  // Everything below is unpublished or blocked: only staff, the owning instructor, and the
+  // assigned content reviewer may see it. 404 rather than 403 so other instructors' drafts
+  // cannot be probed for by id.
+  if (canModerateCourses(actor)) return { course };
+  if (String(course.instructorId) === String(actor?.id)) return { course };
+  if (isAssignedReviewer(course, actor)) return { course };
+
+  return { error: "COURSE_NOT_FOUND", status: 404 };
 }
 
 /** True when the actor may see lesson media for this course. */
@@ -96,6 +102,8 @@ async function hasCourseAccess(course, actor, tenantId) {
   if (!actor) return false;
   if (canModerateCourses(actor)) return true;
   if (String(course.instructorId) === String(actor.id)) return true;
+  // A reviewer cannot judge content they are not allowed to open.
+  if (isAssignedReviewer(course, actor)) return true;
 
   const enrollment = await Enrollment.findOne({
     userId: actor.id,
@@ -126,7 +134,9 @@ async function thumbnailUrlFor(course) {
 async function serializeCourse(course, { actor } = {}) {
   const doc = course.toObject ? course.toObject() : course;
   const canManage =
-    canModerateCourses(actor) || String(doc.instructorId?._id ?? doc.instructorId) === String(actor?.id);
+    canModerateCourses(actor) ||
+    String(doc.instructorId?._id ?? doc.instructorId) === String(actor?.id) ||
+    isAssignedReviewer(doc, actor);
 
   return {
     id: String(doc._id),
@@ -165,6 +175,8 @@ async function serializeCourse(course, { actor } = {}) {
           blockedAt: doc.moderation?.blockedAt || null,
         }
       : { isBlocked: Boolean(doc.moderation?.isBlocked) },
+    // Review state drives the instructor's publish button; learners never see it.
+    ...(canManage ? { review: serializeReview(doc) } : {}),
     createdAt: doc.created_on,
     updatedAt: doc.updated_on,
   };
@@ -330,6 +342,24 @@ export async function getCourse(req, res, next) {
     const payload = await serializeCourse(course, { actor });
     payload.canManage = canManage;
     payload.hasAccess = hasAccess;
+    // The learner's own enrolment state, so the page can show "request pending" or
+    // "declined" instead of offering the enrol button again.
+    if (actor && !hasAccess) {
+      const mine = await Enrollment.findOne({
+        userId: actor.id,
+        courseId: course._id,
+        tenantId,
+      }).select("status decisionNote requestedAt");
+      payload.myEnrollment = mine
+        ? {
+            status: mine.status,
+            decisionNote: mine.decisionNote || "",
+            requestedAt: mine.requestedAt || null,
+          }
+        : null;
+    }
+    /** Paid courses are gated on staff approval rather than instant enrolment. */
+    payload.needsApproval = Boolean(course.requiresPayment) || Number(course.price) > 0;
     payload.modules = modules.map((m) => ({
       id: String(m._id),
       title: m.title,
@@ -441,6 +471,11 @@ export async function publishCourse(req, res, next) {
     });
     if (lessonCount === 0) return sendError(res, "COURSE_EMPTY_CANNOT_PUBLISH", 422);
 
+    // Content review is the gate on publishing — an approval must exist and be current.
+    if (course.review?.status !== "APPROVED") {
+      return sendError(res, "COURSE_REVIEW_REQUIRED", 422);
+    }
+
     const updated = await Course.findOneAndUpdate(
       { _id: course._id, tenantId: req.tenantId },
       {
@@ -452,6 +487,18 @@ export async function publishCourse(req, res, next) {
       },
       { new: true }
     ).populate("instructorId", "name email");
+
+    await notifyUsers({
+      tenantId: req.tenantId,
+      userIds: [course.review?.reviewerId, course.instructorId],
+      type: "course.published",
+      title: `Course published: ${course.title}`,
+      message: "The approved course is now live in the catalog.",
+      actorId: actor.id,
+      actorName: await actorNameFor(actor.id),
+      courseId: course._id,
+      link: `/courses/${course._id}`,
+    });
 
     return sendSuccess(res, "Course published", await serializeCourse(updated, { actor }));
   } catch (err) {
@@ -469,9 +516,31 @@ export async function unpublishCourse(req, res, next) {
     }
 
     const courseId = result.course?._id || req.params.id;
+    // Approval is consumed by publishing: a course taken back to draft must be re-reviewed
+    // before it can go live again, so an old approval can't cover later edits.
     const updated = await Course.findOneAndUpdate(
       { _id: courseId, tenantId: req.tenantId },
-      { $set: { status: "DRAFT", publishedAt: null, updated_by: actor.id } },
+      {
+        $set: {
+          status: "DRAFT",
+          publishedAt: null,
+          updated_by: actor.id,
+          "review.status": "NOT_SUBMITTED",
+          "review.reviewerId": null,
+          "review.submittedAt": null,
+          "review.decidedAt": null,
+          "review.note": "",
+        },
+        $push: {
+          "review.history": {
+            action: "reset",
+            actorId: actor.id,
+            actorName: await actorNameFor(actor.id),
+            note: "Course unpublished - review reset.",
+            at: new Date(),
+          },
+        },
+      },
       { new: true }
     ).populate("instructorId", "name email");
 
@@ -483,7 +552,284 @@ export async function unpublishCourse(req, res, next) {
   }
 }
 
-/** Soft delete — archived courses stay queryable for existing enrollments and reporting. */
+/* ------------------------------------------------------------------ *
+ * Content review
+ * ------------------------------------------------------------------ */
+
+async function actorNameFor(userId) {
+  if (!userId) return "";
+  const user = await User.findById(userId).select("name email");
+  return user?.name || user?.email || "";
+}
+
+/**
+ * Users whose tenant role grants courses:approve - the people an instructor may pick as
+ * reviewer. Derived from the permission matrix, so a tenant that renames or clones the
+ * Content Reviewer role keeps working without any code change here.
+ */
+async function eligibleReviewers(tenantId) {
+  return usersWithPermission(tenantId, "courses", "approve");
+}
+
+function serializeReview(course) {
+  const review = course.review || {};
+  return {
+    status: review.status || "NOT_SUBMITTED",
+    reviewerId: review.reviewerId ? String(review.reviewerId) : null,
+    submittedBy: review.submittedBy ? String(review.submittedBy) : null,
+    submittedAt: review.submittedAt || null,
+    decidedBy: review.decidedBy ? String(review.decidedBy) : null,
+    decidedAt: review.decidedAt || null,
+    note: review.note || "",
+    canPublish: review.status === "APPROVED",
+    history: (review.history || []).map((event) => ({
+      action: event.action,
+      actorId: event.actorId ? String(event.actorId) : null,
+      actorName: event.actorName || "",
+      note: event.note || "",
+      at: event.at,
+    })),
+  };
+}
+
+/** GET /api/courses/reviewers - who the instructor can send a course to. */
+export async function listCourseReviewers(req, res, next) {
+  try {
+    return sendSuccess(res, "Reviewers fetched", {
+      reviewers: await eligibleReviewers(req.tenantId),
+    });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+/** GET /api/courses/:id/review - current review state plus full history. */
+export async function getCourseReview(req, res, next) {
+  try {
+    const actor = getActor(req);
+    const result = await loadReadableCourse(req.params.id, req.tenantId, actor);
+    if (result.error) return sendError(res, result.error, result.status);
+
+    const course = result.course;
+    const canSeeReview =
+      canModerateCourses(actor) ||
+      String(course.instructorId) === String(actor.id) ||
+      isAssignedReviewer(course, actor);
+    if (!canSeeReview) return sendError(res, "COURSE_NOT_FOUND", 404);
+
+    return sendSuccess(res, "Review fetched", serializeReview(course));
+  } catch (err) {
+    return next(err);
+  }
+}
+
+/**
+ * GET /api/courses/review-queue - courses waiting on this reviewer.
+ * Moderators see every pending review in the tenant, not just their own assignments.
+ */
+export async function listReviewQueue(req, res, next) {
+  try {
+    const actor = getActor(req);
+    // ?status=ALL gives moderators the whole review picture — pending, sent back, and
+    // approved-but-unpublished — which is what the admin monitoring page needs.
+    const wantAll = String(req.query.status || "").toUpperCase() === "ALL";
+    const filter = { tenantId: req.tenantId };
+    filter["review.status"] = wantAll
+      ? { $in: ["PENDING", "CHANGES_REQUESTED", "APPROVED"] }
+      : "PENDING";
+    if (!canModerateCourses(actor)) filter["review.reviewerId"] = actor.id;
+
+    const courses = await Course.find(filter)
+      .sort({ "review.submittedAt": -1 })
+      .limit(200)
+      .populate("instructorId", "name email");
+
+    return sendSuccess(res, "Review queue fetched", {
+      courses: await Promise.all(courses.map((course) => serializeCourse(course, { actor }))),
+    });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+/**
+ * POST /api/courses/:id/submit-review - instructor sends the course to a content reviewer.
+ * Allowed from NOT_SUBMITTED or CHANGES_REQUESTED; re-submitting a PENDING course conflicts
+ * so a reviewer's queue cannot be spammed.
+ */
+export async function submitCourseForReview(req, res, next) {
+  try {
+    const actor = getActor(req);
+    const result = await loadWritableCourse(req.params.id, req.tenantId, actor);
+    if (result.error) return sendError(res, result.error, result.status);
+
+    const course = result.course;
+    if (course.status === "PUBLISHED") return sendError(res, "COURSE_ALREADY_PUBLISHED", 409);
+    if (course.review?.status === "PENDING") return sendError(res, "COURSE_REVIEW_PENDING", 409);
+    if (course.review?.status === "APPROVED") return sendError(res, "COURSE_REVIEW_APPROVED", 409);
+
+    const lessonCount = await Lesson.countDocuments({
+      courseId: course._id,
+      tenantId: req.tenantId,
+    });
+    if (lessonCount === 0) return sendError(res, "COURSE_EMPTY_CANNOT_PUBLISH", 422);
+
+    const { reviewerId, note = "" } = req.body;
+    const reviewers = await eligibleReviewers(req.tenantId);
+    if (reviewers.length === 0) return sendError(res, "COURSE_REVIEWER_UNAVAILABLE", 422);
+
+    const reviewer = reviewers.find((r) => r.id === String(reviewerId));
+    if (!reviewer) return sendError(res, "COURSE_REVIEWER_INVALID", 400);
+
+    const actorName = await actorNameFor(actor.id);
+    const now = new Date();
+
+    const updated = await Course.findOneAndUpdate(
+      { _id: course._id, tenantId: req.tenantId },
+      {
+        $set: {
+          "review.status": "PENDING",
+          "review.reviewerId": reviewer.id,
+          "review.submittedBy": actor.id,
+          "review.submittedAt": now,
+          "review.decidedBy": null,
+          "review.decidedAt": null,
+          "review.note": note,
+          updated_by: actor.id,
+        },
+        $push: {
+          "review.history": {
+            action: "submitted",
+            actorId: actor.id,
+            actorName,
+            note,
+            at: now,
+          },
+        },
+      },
+      { new: true }
+    );
+
+    await notifyUsers({
+      tenantId: req.tenantId,
+      userIds: [reviewer.id],
+      type: "course.review.assigned",
+      title: `Review requested: ${course.title}`,
+      message: note
+        ? `${actorName} assigned this course to you for review. Note: ${note}`
+        : `${actorName} assigned this course to you for review.`,
+      actorId: actor.id,
+      actorName,
+      courseId: course._id,
+      link: `/admin/courses/${course._id}/review`,
+    });
+
+    return sendSuccess(res, "Course submitted for review", serializeReview(updated));
+  } catch (err) {
+    return next(err);
+  }
+}
+
+/**
+ * POST /api/courses/:id/review/request-changes - reviewer sends the course back with input
+ * (plagiarism findings, corrections). The note is mandatory: "changes requested" with no
+ * explanation is not actionable for the instructor.
+ */
+export async function requestCourseChanges(req, res, next) {
+  return decideReview(req, res, next, {
+    action: "changes_requested",
+    status: "CHANGES_REQUESTED",
+    type: "course.review.changes_requested",
+    titleFor: (course) => `Changes requested: ${course.title}`,
+    messageFor: (actorName, note) => `${actorName} requested changes. ${note}`,
+    successMessage: "Changes requested",
+  });
+}
+
+/** POST /api/courses/:id/review/approve - reviewer signs the course off for publishing. */
+export async function approveCourseReview(req, res, next) {
+  return decideReview(req, res, next, {
+    action: "approved",
+    status: "APPROVED",
+    type: "course.review.approved",
+    titleFor: (course) => `Approved: ${course.title}`,
+    messageFor: (actorName, note) =>
+      note
+        ? `${actorName} approved this course. You can publish it now. Note: ${note}`
+        : `${actorName} approved this course. You can publish it now.`,
+    successMessage: "Course approved",
+  });
+}
+
+/**
+ * Shared path for both reviewer decisions.
+ *
+ * The assigned reviewer decides; anyone who can moderate courses in the tenant may also
+ * decide, so a review is never stuck behind an absent or deactivated reviewer.
+ */
+async function decideReview(req, res, next, config) {
+  try {
+    const actor = getActor(req);
+    if (!isObjectId(req.params.id)) return sendError(res, "COURSE_INVALID_ID", 400);
+
+    const course = await Course.findOne({ _id: req.params.id, tenantId: req.tenantId });
+    if (!course) return sendError(res, "COURSE_NOT_FOUND", 404);
+
+    const isAssignedReviewer = String(course.review?.reviewerId || "") === String(actor.id);
+    if (!isAssignedReviewer && !canModerateCourses(actor)) {
+      return sendError(res, "COURSE_REVIEW_NOT_ASSIGNED", 403);
+    }
+
+    if (course.review?.status !== "PENDING") {
+      return sendError(res, "COURSE_REVIEW_NOT_PENDING", 409);
+    }
+
+    const note = String(req.body.note || "").trim();
+    const actorName = await actorNameFor(actor.id);
+    const now = new Date();
+
+    const updated = await Course.findOneAndUpdate(
+      { _id: course._id, tenantId: req.tenantId },
+      {
+        $set: {
+          "review.status": config.status,
+          "review.decidedBy": actor.id,
+          "review.decidedAt": now,
+          "review.note": note,
+          updated_by: actor.id,
+        },
+        $push: {
+          "review.history": {
+            action: config.action,
+            actorId: actor.id,
+            actorName,
+            note,
+            at: now,
+          },
+        },
+      },
+      { new: true }
+    );
+
+    await notifyUsers({
+      tenantId: req.tenantId,
+      userIds: [course.instructorId, course.review?.submittedBy],
+      type: config.type,
+      title: config.titleFor(course),
+      message: config.messageFor(actorName, note),
+      actorId: actor.id,
+      actorName,
+      courseId: course._id,
+      link: `/instructor/courses/${course._id}`,
+    });
+
+    return sendSuccess(res, config.successMessage, serializeReview(updated));
+  } catch (err) {
+    return next(err);
+  }
+}
+
+/** Soft delete - archived courses stay queryable for existing enrollments and reporting. */
 export async function deleteCourse(req, res, next) {
   try {
     const actor = getActor(req);

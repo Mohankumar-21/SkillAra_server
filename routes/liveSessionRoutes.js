@@ -13,7 +13,7 @@ import {
   endLiveSession,
   cancelLiveSession,
 } from "../controllers/liveSessionController.js";
-import { requireAuth, requireRole, requireTenant } from "../middlewares/auth.js";
+import { requireAuth, requirePermission, requireTenant } from "../middlewares/auth.js";
 import { checkPlanLimits } from "../middlewares/checkPlanLimits.js";
 import { prepareResponseMsg } from "../utils/helper.js";
 import { requireDb } from "../utils/db-state.js";
@@ -23,7 +23,8 @@ const router = express.Router();
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid id");
 
 const createSchema = z.object({
-  courseId: objectId,
+  /** Omit for an open session: no course, visible to the whole organization. */
+  courseId: objectId.optional(),
   title: z.string().trim().min(1).max(200),
   description: z.string().max(2000).optional(),
   scheduledStart: z.string().min(1),
@@ -55,8 +56,8 @@ router.post(
   "/",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN", "TUTOR"),
   requireTenant,
+  requirePermission("live-sessions", "create"),
   checkPlanLimits({ resource: "live-sessions" }),
   validateBody(createSchema),
   createLiveSession
@@ -74,8 +75,8 @@ router.patch(
   "/:id/end",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN", "TUTOR"),
   requireTenant,
+  requirePermission("live-sessions", "manage"),
   validateBody(endSchema),
   endLiveSession
 );
@@ -84,8 +85,8 @@ router.patch(
   "/:id/cancel",
   requireDb,
   requireAuth,
-  requireRole("TENANT_ADMIN", "ORG_ADMIN", "TUTOR"),
   requireTenant,
+  requirePermission("live-sessions", "manage"),
   validateBody(cancelSchema),
   cancelLiveSession
 );

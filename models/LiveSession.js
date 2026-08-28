@@ -22,7 +22,8 @@ const liveSessionSchema = new mongoose.Schema(
     courseId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Course",
-      required: true,
+      required: false,
+      default: null,
       index: true,
     },
     instructorId: {
@@ -52,6 +53,11 @@ const liveSessionSchema = new mongoose.Schema(
 );
 
 liveSessionSchema.index({ tenantId: 1, courseId: 1, scheduledStart: -1 });
+/**
+ * Open sessions carry no courseId: mentors and other staff run workshops, office hours and
+ * Q&As that are not attached to any course, and everyone in the tenant may attend.
+ */
+liveSessionSchema.index({ tenantId: 1, scheduledStart: -1 });
 
 const LiveSession = mongoose.model("LiveSession", liveSessionSchema);
 export default LiveSession;

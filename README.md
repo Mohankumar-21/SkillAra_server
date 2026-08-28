@@ -141,8 +141,13 @@ alongside the REST API as a Socket.io namespace at `/socket.io/webrtc` — see
 | `POST` | `/` | Instructor, org admin, owner |
 | `PATCH` `PUT` | `/:id` | Course owner or admin |
 | `DELETE` | `/:id` | Course owner or admin (soft delete → `ARCHIVED`) |
-| `POST` | `/:id/publish` `/:id/unpublish` | Course owner or admin |
-| `POST` | `/:id/block` `/:id/unblock` | Org admin, owner |
+| `POST` | `/:id/publish` `/:id/unpublish` | `courses:publish` — **requires an approved content review** |
+| `GET` | `/reviewers` | `courses:submit` — people who may be sent a course to review |
+| `GET` | `/review-queue` | `courses:approve` — courses waiting on you |
+| `GET` | `/:id/review` | Course owner, assigned reviewer, or moderator |
+| `POST` | `/:id/submit-review` | `courses:submit` |
+| `POST` | `/:id/review/approve` `/:id/review/request-changes` | `courses:approve` |
+| `POST` | `/:id/block` `/:id/unblock` | `courses:moderate` — taking a *live* course down, deliberately not `approve` |
 | `POST` | `/:id/thumbnail` | Course owner or admin |
 | `POST` | `/:id/modules` | Course owner or admin |
 | `PUT` | `/:id/modules/reorder` | Course owner or admin |
@@ -155,6 +160,45 @@ alongside the REST API as a Socket.io namespace at `/socket.io/webrtc` — see
 | `POST` | `/lessons/:lessonId/attachments` | Course owner or admin |
 | `DELETE` | `/lessons/:lessonId/attachments/:attachmentId` | Course owner or admin |
 | `GET` | `/lessons/:lessonId/play` | Enrolled learner, course owner, or admin |
+
+### Content review (`/api/courses/:id/...`)
+
+A course cannot be published until a content reviewer has approved it.
+
+```text
+NOT_SUBMITTED ──submit-review──▶ PENDING ──review/approve──▶ APPROVED ──publish──▶ live
+                                    │                                        │
+                                    └──review/request-changes──▶            unpublish
+                                            CHANGES_REQUESTED  ──submit──▶ PENDING
+```
+
+- The instructor picks a reviewer from `GET /reviewers`, which lists every user whose role
+  grants `courses:approve`. Rename or clone the Content Reviewer role and it still works —
+  the list is derived from the permission matrix, never from a role name.
+- The assigned reviewer can open the draft and its lesson media even though they are neither
+  the author nor an admin; nobody else can.
+- `request-changes` requires a note — a rejection with no explanation is not actionable.
+- Anyone who can moderate the catalog can also decide a review, so it is never stuck behind
+  an absent reviewer.
+- Approval is consumed by publishing: unpublishing resets the course to `NOT_SUBMITTED`, so
+  edits made after going live go through review again.
+- Every decision appends to `Course.review.history`.
+
+### Notifications (`/api/notifications`)
+
+| Method | Path | Notes |
+|--------|------|-------|
+| `GET` | `/` | Your inbox — `?unreadOnly=true`, `?page`, `?limit` |
+| `GET` | `/unread-count` | Badge count |
+| `PATCH` | `/:id/read` | Mark one read |
+| `POST` | `/read-all` | Mark everything read |
+
+Written on review assignment, changes requested, approval, and publish. One row per
+recipient, so the unread count is a single indexed query.
+
+These endpoints are deliberately **not** behind `requirePermission("notifications", ...)`:
+an inbox is self-scoped to the caller, and gating it would only let a role be configured out
+of its own notifications. Writing a notification never fails the action that triggered it.
 
 ### Enrolment — two paths
 
@@ -243,14 +287,29 @@ points at one of them. The API sends the effective permission map to the client 
 `/api/auth/login` and `/api/auth/me` so the UI can render role-appropriate navigation —
 but every action is re-checked server-side.
 
-| Role | Slug | Course reach | Also can |
+**A role is nothing but its permission map.** There is no second, hidden privilege tier:
+every tenant route is gated by `requirePermission(moduleId, action)` against
+`Tenant.roles[].permissions`, so a custom role an admin builds in the UI has exactly the
+reach its checkboxes describe. Eight roles are seeded per tenant; admins add as many more as
+they like, and the API and navigation both follow automatically.
+
+| Seeded role | Slug | Course reach | Also can |
 |------|------|--------------|----------|
 | **Super Admin** | *(platform, not a tenant role)* | Read every course in every tenant; block/unblock/unpublish any of them | Tenants, plans, platform roles, org types |
-| **Organization Owner** | `organization-owner` | Every course in **their** tenant: view, unpublish, block/unblock, edit | Everything in the tenant, incl. ownership transfer |
-| **Organization Admin** | `org-admin` | Same course reach as the owner within the tenant | Users, roles, master data |
-| **Instructor** | `instructor` | Full CRUD on **only their own** courses — modules, lessons, video/PDF upload, publish | Assignments, quizzes, view students |
-| **Teaching Assistant** | `teaching-assistant` | View/edit course content (no create or publish) | Assist with assignments and quizzes |
-| **Student** | `student` | Browse published courses; watch lessons they are enrolled in | Quizzes, forum, certificates |
+| **Organization Owner** | `organization-owner` | Everything, including approving and publishing | Everything in the tenant, incl. ownership transfer |
+| **Organization Admin** | `org-admin` | Author, approve, publish, moderate | Users, roles, master data |
+| **Instructor** | `instructor` | Full CRUD on **only their own** courses; submits them for review | Assignments, quizzes, live sessions, mentorship |
+| **Teaching Assistant** | `teaching-assistant` | View/edit course content — no create, publish, or submit | Assist with assignments and quizzes |
+| **Mentor** | `mentor` | — | Mentorship queue, mock interviews, live sessions |
+| **Content Reviewer** | `content-reviewer` | Read any course assigned to them; approve it or send it back. Cannot block a live course — that is `courses:moderate`, an admin power | Approve lessons, assignments, quizzes, certificates |
+| **Support** | `support` | — | Moderate the forum and community, view users |
+| **Learner** | `learner` | Browse published courses; watch lessons they are enrolled in | Attempt quizzes and mock tests, forum, mentorship |
+
+`legacyRole` / `legacyApiRole` on a role are **display and client-routing hints only** —
+never consulted for authorization. On custom roles they are *derived* from the permission
+map (`deriveLegacyApiRole`), never accepted from request input, so a caller who can create
+roles cannot mint themselves a privilege tier. `TENANT_ADMIN` is unreachable by derivation;
+organization ownership comes from `isOwnerRole` alone.
 
 Two rules do the heavy lifting in `controllers/courseController.js`:
 
@@ -262,15 +321,32 @@ Two rules do the heavy lifting in `controllers/courseController.js`:
   regardless of status and cannot be self-published out of.
 
 Publishing is its own endpoint (`POST /:id/publish`) rather than a `status` field write,
-so the "must have at least one lesson" check cannot be bypassed via `PATCH`.
+so neither the "must have at least one lesson" check nor the content-review gate can be
+bypassed via `PATCH`.
 
 ## Authorization
+
+Three gates, and only three:
+
+| Gate | Guards | Used for |
+|------|--------|----------|
+| `requirePermission(moduleId, action)` | `Tenant.roles[].permissions` | **Every** tenant route |
+| `requireOwner` | the role's `isOwnerRole` flag | Ownership transfer only — singular per tenant, so not expressible as a permission |
+| `requireRole("SUPER_ADMIN")` | platform principal | Super admins live in the `SuperAdmin` collection, not `Tenant.roles[]` |
+
+`requireRole()` **throws at route-definition time** if handed a tenant role name, so the old
+"four hardcoded buckets" path cannot come back by accident.
 
 - **Access token** — Bearer JWT (RS256), short-lived, in memory on clients
 - **Refresh token** — httpOnly cookie, rotated on `/auth/refresh`
 - **Tenant scope** — `req.tenantId` from JWT or subdomain middleware; never trust client-supplied tenant id in body
-- **Organization owner** — resolved via DB `isTenantAdmin`, embedded owner role, or JWT `TENANT_ADMIN`
+- **Role resolution** — `authenticate()` reads `roleId` from the database row it already loads
+  to validate the token, not from the token itself, so a role or permission change takes
+  effect on the next request rather than at the next token refresh
 - **Org admin assignment** — only organization owner (`USER_ORG_ADMIN_FORBIDDEN` otherwise)
+- **Seed drift** — `backfillRolesAndPermissions()` re-syncs `roleType: "system"` roles to the
+  current catalog on every boot, so tenants provisioned before a catalog change do not sit on
+  a stale permission map. Custom roles are never touched.
 
 ## Project layout
 

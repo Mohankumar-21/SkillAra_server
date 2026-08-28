@@ -1,31 +1,42 @@
-import OpenAI from "openai";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-// Defaults to OpenAI directly; set OPENAI_BASE_URL to point the same OpenAI SDK at an
-// OpenAI-compatible gateway instead (e.g. https://openrouter.ai/api/v1 for OpenRouter).
-// AI_MODEL follows suit — OpenRouter model ids are namespaced, e.g. "openai/gpt-4o".
-const AI_MODEL = process.env.AI_MODEL || "gpt-4o";
-// The SDK defaults to a large max_tokens (16384) when unset, which a low-balance
-// OpenRouter account can't afford — cap it so requests fit a free/small balance.
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY;
+const AI_MODEL = process.env.AI_MODEL || "gemini-flash-latest";
 const AI_MAX_TOKENS = Number(process.env.AI_MAX_TOKENS) || 2000;
 
-let openaiInstance = null;
-
-const getOpenAiClient = () => {
-  if (openaiInstance) return openaiInstance;
-
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is missing from .env. Please add it to use AI features.");
+/**
+ * Helper to call Google's Gemini generateContent REST API
+ */
+const callGeminiApi = async (payload) => {
+  if (!GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY is missing from .env. Please add it to use AI features.");
   }
 
-  openaiInstance = new OpenAI({
-    apiKey,
-    baseURL: process.env.OPENAI_BASE_URL || undefined,
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${AI_MODEL}:generateContent`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-goog-api-key": GEMINI_API_KEY,
+      "Connection": "close"
+    },
+    body: JSON.stringify(payload)
   });
-  return openaiInstance;
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Gemini API Error (HTTP ${response.status}): ${errText}`);
+  }
+
+  const data = await response.json();
+  if (data.error) {
+    throw new Error(`Gemini API Error: ${data.error.message}`);
+  }
+
+  return data;
 };
 
 /**
@@ -33,27 +44,30 @@ const getOpenAiClient = () => {
  */
 export const getAiTutorResponse = async (query, context = "") => {
   try {
-    const client = getOpenAiClient();
-    const response = await client.chat.completions.create({
-      model: AI_MODEL,
-      messages: [
-        {
-          role: "system",
-          content: `You are Skillara AI Tutor, a friendly and helpful educational assistant. 
-          Use the following lesson context to answer student questions. 
-          If you don't know the answer based on the context, say so, but try to be helpful. 
-          Context: ${context}`,
-        },
+    const payload = {
+      contents: [
         {
           role: "user",
-          content: query,
-        },
+          parts: [{ text: query }]
+        }
       ],
-      temperature: 0.7,
-      max_tokens: AI_MAX_TOKENS,
-    });
+      systemInstruction: {
+        role: "system",
+        parts: [{
+          text: `You are Skillara AI Tutor, a friendly and helpful educational assistant. 
+          Use the following lesson context to answer student questions. 
+          If you don't know the answer based on the context, say so, but try to be helpful. 
+          Context: ${context}`
+        }]
+      },
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: AI_MAX_TOKENS
+      }
+    };
 
-    return response.choices[0].message.content;
+    const data = await callGeminiApi(payload);
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
   } catch (error) {
     console.error("AI Tutor Error:", error);
     throw error;
@@ -65,13 +79,17 @@ export const getAiTutorResponse = async (query, context = "") => {
  */
 export const generateQuiz = async (content, questionCount = 5) => {
   try {
-    const client = getOpenAiClient();
-    const response = await client.chat.completions.create({
-      model: AI_MODEL,
-      messages: [
+    const payload = {
+      contents: [
         {
-          role: "system",
-          content: `You are an expert educational content creator. 
+          role: "user",
+          parts: [{ text: `Generate ${questionCount} questions for the following content: ${content}` }]
+        }
+      ],
+      systemInstruction: {
+        role: "system",
+        parts: [{
+          text: `You are an expert educational content creator. 
           Generate a multiple-choice quiz based on the provided content. 
           Return the quiz in JSON format: 
           [
@@ -81,18 +99,18 @@ export const generateQuiz = async (content, questionCount = 5) => {
               "correctAnswer": "...",
               "explanation": "..."
             }
-          ]`,
-        },
-        {
-          role: "user",
-          content: `Generate ${questionCount} questions for the following content: ${content}`,
-        },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: AI_MAX_TOKENS,
-    });
+          ]`
+        }]
+      },
+      generationConfig: {
+        responseMimeType: "application/json",
+        maxOutputTokens: AI_MAX_TOKENS
+      }
+    };
 
-    return JSON.parse(response.choices[0].message.content);
+    const data = await callGeminiApi(payload);
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
+    return JSON.parse(text);
   } catch (error) {
     console.error("Quiz Generator Error:", error);
     throw error;
@@ -104,24 +122,27 @@ export const generateQuiz = async (content, questionCount = 5) => {
  */
 export const summarizeContent = async (content) => {
   try {
-    const client = getOpenAiClient();
-    const response = await client.chat.completions.create({
-      model: AI_MODEL,
-      messages: [
-        {
-          role: "system",
-          content: "You are an expert at condensing information. Provide a concise, structured summary of the following lesson content. Use bullet points where appropriate.",
-        },
+    const payload = {
+      contents: [
         {
           role: "user",
-          content: `Summarize this: ${content}`,
-        },
+          parts: [{ text: `Summarize this: ${content}` }]
+        }
       ],
-      temperature: 0.5,
-      max_tokens: AI_MAX_TOKENS,
-    });
+      systemInstruction: {
+        role: "system",
+        parts: [{
+          text: "You are an expert at condensing information. Provide a concise, structured summary of the following lesson content. Use bullet points where appropriate."
+        }]
+      },
+      generationConfig: {
+        temperature: 0.5,
+        maxOutputTokens: AI_MAX_TOKENS
+      }
+    };
 
-    return response.choices[0].message.content;
+    const data = await callGeminiApi(payload);
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
   } catch (error) {
     console.error("Summarization Error:", error);
     throw error;
@@ -133,27 +154,31 @@ export const summarizeContent = async (content) => {
  */
 export const evaluateSubmission = async (studentWork, assignmentContext) => {
   try {
-    const client = getOpenAiClient();
-    const response = await client.chat.completions.create({
-      model: AI_MODEL,
-      messages: [
-        {
-          role: "system",
-          content: `You are an academic evaluator. Grade the student's work based on the assignment requirements. 
-          Provide constructive feedback and a score out of 100.
-          Requirements: ${assignmentContext}
-          Return JSON: { "feedback": "...", "score": 85 }`,
-        },
+    const payload = {
+      contents: [
         {
           role: "user",
-          content: `Student Work: ${studentWork}`,
-        },
+          parts: [{ text: `Student Work: ${studentWork}` }]
+        }
       ],
-      response_format: { type: "json_object" },
-      max_tokens: AI_MAX_TOKENS,
-    });
+      systemInstruction: {
+        role: "system",
+        parts: [{
+          text: `You are an academic evaluator. Grade the student's work based on the assignment requirements. 
+          Provide constructive feedback and a score out of 100.
+          Requirements: ${assignmentContext}
+          Return JSON: { "feedback": "...", "score": 85 }`
+        }]
+      },
+      generationConfig: {
+        responseMimeType: "application/json",
+        maxOutputTokens: AI_MAX_TOKENS
+      }
+    };
 
-    return JSON.parse(response.choices[0].message.content);
+    const data = await callGeminiApi(payload);
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+    return JSON.parse(text);
   } catch (error) {
     console.error("Evaluation Error:", error);
     throw error;

@@ -5,12 +5,18 @@ import logger from "../core/logger.js";
 import {
   getPlatformSuperAdminRole,
   resolveTenantRoleForUser,
+  resyncCustomRoleLegacyHints,
   seedPlatformRoles,
+  seedTenantRoles,
+  syncSystemRolePermissions,
 } from "../services/roleService.js";
 
 /**
- * Backfill roleId on users/superadmins. Does NOT re-seed tenant default roles
- * (those run only on tenant create via seedNewTenantDefaults).
+ * Backfill roleId on users/superadmins and bring every tenant's roles up to date.
+ *
+ * Since all tenant routes are gated by requirePermission(), a tenant provisioned before a
+ * catalog change would be missing actions its seeded roles are meant to have — so system
+ * role permission maps are re-synced here on every boot.
  */
 export async function backfillRolesAndPermissions() {
   await seedPlatformRoles();
@@ -30,8 +36,16 @@ export async function backfillRolesAndPermissions() {
 
   const tenants = await Tenant.find({}).select("_id");
   let userUpdates = 0;
+  let roleUpdates = 0;
+  let hintUpdates = 0;
 
   for (const tenant of tenants) {
+    // Add any newly seeded roles, refresh system role permissions, then re-derive the
+    // client-routing hint on custom roles (they were all stamped STUDENT before it was derived).
+    await seedTenantRoles(tenant._id);
+    roleUpdates += await syncSystemRolePermissions(tenant._id);
+    hintUpdates += await resyncCustomRoleLegacyHints(tenant._id);
+
     const users = await User.find({ tenantId: tenant._id });
 
     for (const user of users) {
@@ -66,6 +80,12 @@ export async function backfillRolesAndPermissions() {
     }
   }
 
+  if (roleUpdates > 0) {
+    logger.info(`Re-synced permissions on ${roleUpdates} system role(s)`);
+  }
+  if (hintUpdates > 0) {
+    logger.info(`Re-derived legacy role hint on ${hintUpdates} custom role(s)`);
+  }
   if (userUpdates > 0) {
     logger.info(`Backfilled roleId on ${userUpdates} tenant user(s)`);
   }

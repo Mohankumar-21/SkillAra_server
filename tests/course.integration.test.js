@@ -50,8 +50,9 @@ async function seedFixtures() {
 
   const roles = {
     instructorA: await getTenantRoleBySlug(tenantA._id, "instructor"),
-    studentA: await getTenantRoleBySlug(tenantA._id, "student"),
+    studentA: await getTenantRoleBySlug(tenantA._id, "learner"),
     ownerA: await getTenantRoleBySlug(tenantA._id, "organization-owner"),
+    reviewerA: await getTenantRoleBySlug(tenantA._id, "content-reviewer"),
     instructorB: await getTenantRoleBySlug(tenantB._id, "instructor"),
   };
 
@@ -62,9 +63,12 @@ async function seedFixtures() {
   const tutor2 = await make(tenantA._id, "tutor2@a.com", roles.instructorA._id, { name: "Tutor Two" });
   const admin = await make(tenantA._id, "admin@a.com", roles.ownerA._id, { isTenantAdmin: true });
   const student = await make(tenantA._id, "student@a.com", roles.studentA._id);
+  const reviewer = await make(tenantA._id, "reviewer@a.com", roles.reviewerA._id, {
+    name: "Rev Reviewer",
+  });
   const tutorB = await make(tenantB._id, "tutor@b.com", roles.instructorB._id);
 
-  return { tenantA, tenantB, tutor1, tutor2, admin, student, tutorB };
+  return { tenantA, tenantB, tutor1, tutor2, admin, student, reviewer, tutorB };
 }
 
 function tokenFor(user, role) {
@@ -198,6 +202,15 @@ describe("publishing", () => {
     return course;
   }
 
+  /** Publishing now requires a content-review approval; give the course one directly. */
+  async function approved(course) {
+    await Course.updateOne(
+      { _id: course._id },
+      { $set: { "review.status": "APPROVED", "review.reviewerId": fx.reviewer._id } }
+    );
+    return course;
+  }
+
   test("an empty course cannot be published", async () => {
     const course = await Course.create({
       tenantId: fx.tenantA._id,
@@ -212,8 +225,19 @@ describe("publishing", () => {
     expect(res.status).toBe(422);
   });
 
-  test("a course with content publishes and sets publishedAt", async () => {
+  test("a course that has not been through review cannot be published", async () => {
     const course = await courseWithLesson(fx.tutor1);
+
+    const res = await request(app)
+      .post(`/api/courses/${course._id}/publish`)
+      .set(auth(tokenFor(fx.tutor1, "TUTOR")));
+
+    expect(res.status).toBe(422);
+    expect((await Course.findById(course._id)).status).toBe("DRAFT");
+  });
+
+  test("an approved course publishes and sets publishedAt", async () => {
+    const course = await approved(await courseWithLesson(fx.tutor1));
 
     const res = await request(app)
       .post(`/api/courses/${course._id}/publish`)
@@ -253,7 +277,7 @@ describe("publishing", () => {
   });
 
   test("tenant admin blocks a course; the instructor can no longer publish it", async () => {
-    const course = await courseWithLesson(fx.tutor1);
+    const course = await approved(await courseWithLesson(fx.tutor1));
 
     const blocked = await request(app)
       .post(`/api/courses/${course._id}/block`)
