@@ -9,7 +9,21 @@ export const SUPERADMIN_REFRESH_COOKIE = "superadmin_refresh_token";
  * cookie — which breaks "Remember me" / session restore after refresh.
  */
 export function refreshCookieOptions() {
-  const secure = process.env.NODE_ENV === "production";
+  /**
+   * SameSite=Strict never leaves the origin, so when the client and the API sit
+   * on different registrable domains (frontend on *.vercel.app, API on
+   * *.onrender.com) the browser stores the refresh cookie and then never sends
+   * it back — login succeeds and the session dies on the next reload.
+   *
+   * Cross-site deploys therefore need "none". Keep "strict"/"lax" whenever the
+   * two share a domain, where it still buys CSRF protection.
+   */
+  const isProd = process.env.NODE_ENV === "production";
+  const sameSite = String(
+    process.env.COOKIE_SAMESITE || (isProd ? "none" : "strict")
+  ).trim().toLowerCase();
+  // Browsers reject SameSite=None unless the cookie is also Secure.
+  const secure = isProd || sameSite === "none";
   const configuredDomain = String(process.env.COOKIE_DOMAIN || "").trim();
   const useDomain =
     process.env.NODE_ENV === "production" &&
@@ -19,7 +33,7 @@ export function refreshCookieOptions() {
   return {
     httpOnly: true,
     secure,
-    sameSite: "strict",
+    sameSite,
     path: "/",
     ...(useDomain ? { domain: configuredDomain } : {}),
   };

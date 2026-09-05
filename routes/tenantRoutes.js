@@ -25,6 +25,37 @@ const findWorkspaceSchema = z.object({
   email: z.string().email().transform((v) => v.toLowerCase().trim()),
 });
 
+
+/**
+ * Where a workspace lives. With a wildcard domain that is <sub>.<root>; without
+ * one (a bare hosting URL like *.vercel.app has no subdomains) the client app
+ * serves every workspace from one origin and selects by ?tenant=.
+ */
+function buildWorkspaceUrl(sub) {
+  const client = String(process.env.CLIENT_APP_URL || "").trim().replace(/\/+$/, "");
+  const root = String(process.env.ROOT_DOMAIN || "").trim().toLowerCase();
+  const protocol = process.env.CLIENT_APP_PROTOCOL || "http";
+
+  // Subdomain routing only works when the client app is itself served from the
+  // root domain (ROOT_DOMAIN=skillara.com with the client at skillara.com).
+  // When ROOT_DOMAIN is the API's own host, it is not a wildcard domain.
+  if (root && client) {
+    try {
+      const host = new URL(client).hostname.toLowerCase();
+      if (host === root || host.endsWith(`.${root}`)) {
+        return `${protocol}://${sub}.${root}`;
+      }
+    } catch {
+      // unparseable CLIENT_APP_URL — fall through to the query form
+    }
+  }
+  if (client) {
+    return `${client}/login?tenant=${encodeURIComponent(sub)}`;
+  }
+  const port = process.env.CLIENT_APP_PORT || "5173";
+  return `http://${sub}.localhost:${port}`;
+}
+
 tenantRouter.post("/workspace/find", requireDb, async (req, res) => {
   const parsed = findWorkspaceSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -40,7 +71,7 @@ tenantRouter.post("/workspace/find", requireDb, async (req, res) => {
     .filter(u => u.tenantId && u.tenantId.status === "active" && u.status === "active")
     .map(u => {
       const sub = u.tenantId.subdomain || u.tenantId.sub_domain;
-      const url = `http://${sub}.localhost:5173`; 
+      const url = buildWorkspaceUrl(sub);
       return {
         name: u.tenantId.name,
         subdomain: sub,
