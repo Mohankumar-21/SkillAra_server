@@ -117,6 +117,17 @@ router.post(
 
 router.get("/:id", requireDb, requireAuth, requireTenant, canAccessUser, getUser);
 
+/** Partial update: every field in updateUserSchema is optional, so PATCH is the
+ *  verb both clients use. PUT stays registered for older callers. */
+router.patch(
+  "/:id",
+  requireDb,
+  requireAuth,
+  requireTenant,
+  validate(updateUserSchema),
+  updateUser
+);
+
 router.put(
   "/:id",
   requireDb,

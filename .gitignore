@@ -24,3 +24,4 @@ uploads/*
 
 # Nodemon
 nodemon.json (optional if you don't want to share)
+.env.production
