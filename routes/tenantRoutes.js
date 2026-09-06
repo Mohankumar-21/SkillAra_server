@@ -7,6 +7,7 @@ import { requireAuth, requireRole } from "../middlewares/auth.js";
 import { z } from "zod";
 import User from "../models/User.js";
 import { validationMessageFromZod } from "../utils/errorMessages.js";
+import { hasWildcardRootDomain } from "../utils/tenantLoginUrl.js";
 const tenantRouter = express.Router();
 
 tenantRouter.get(
@@ -36,18 +37,8 @@ function buildWorkspaceUrl(sub) {
   const root = String(process.env.ROOT_DOMAIN || "").trim().toLowerCase();
   const protocol = process.env.CLIENT_APP_PROTOCOL || "http";
 
-  // Subdomain routing only works when the client app is itself served from the
-  // root domain (ROOT_DOMAIN=skillara.com with the client at skillara.com).
-  // When ROOT_DOMAIN is the API's own host, it is not a wildcard domain.
-  if (root && client) {
-    try {
-      const host = new URL(client).hostname.toLowerCase();
-      if (host === root || host.endsWith(`.${root}`)) {
-        return `${protocol}://${sub}.${root}`;
-      }
-    } catch {
-      // unparseable CLIENT_APP_URL — fall through to the query form
-    }
+  if (hasWildcardRootDomain()) {
+    return `${protocol}://${sub}.${root}`;
   }
   if (client) {
     return `${client}/login?tenant=${encodeURIComponent(sub)}`;
