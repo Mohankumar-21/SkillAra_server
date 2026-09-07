@@ -37,7 +37,7 @@ export async function listPlans({ activeOnly = false } = {}) {
   let plans = admin.plans;
   if (activeOnly) plans = plans.filter((p) => p.isActive !== false);
   return plans.map((p) => normalizePlanForApi(p)).sort((a, b) => {
-    const order = { FREE: 0, BASIC: 1, PREMIUM: 2, ENTERPRISE: 3 };
+    const order = { FREE: 0, STARTER: 1, PROFESSIONAL: 2, ENTERPRISE: 3 };
     return (order[a.name] ?? 99) - (order[b.name] ?? 99);
   });
 }
@@ -140,7 +140,7 @@ const DEFAULT_PLANS = [
     isActive: true,
   },
   {
-    name: "BASIC",
+    name: "STARTER",
     price: 29,
     billingCycle: "monthly",
     features: {
@@ -170,7 +170,7 @@ const DEFAULT_PLANS = [
     isActive: true,
   },
   {
-    name: "PREMIUM",
+    name: "PROFESSIONAL",
     price: 99,
     billingCycle: "monthly",
     features: {
