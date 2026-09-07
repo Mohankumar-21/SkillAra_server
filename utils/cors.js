@@ -21,16 +21,32 @@ export function corsOrigin(origin, callback) {
 
   if (!origin) return callback(null, true);
 
-  if (process.env.NODE_ENV === "production") {
-    if (list.length === 0) {
-      return callback(new Error("CORS_ORIGINS must be set in production"));
+  try {
+    const { hostname } = new URL(origin);
+
+    // Allow all *.vercel.app deployments (production & preview)
+    if (hostname.endsWith(".vercel.app") || hostname === "vercel.app") {
+      return callback(null, true);
     }
-    if (list.includes(origin)) return callback(null, true);
-    return callback(new Error("CORS blocked"));
+
+    // Check exact list or wildcard matching (*.example.com)
+    const isExplicitlyAllowed = list.some((allowed) => {
+      if (allowed === origin) return true;
+      if (allowed.startsWith("*.")) {
+        const rootDomain = allowed.slice(2);
+        return hostname === rootDomain || hostname.endsWith(`.${rootDomain}`);
+      }
+      return false;
+    });
+
+    if (isExplicitlyAllowed) return callback(null, true);
+  } catch {
+    return callback(new Error("Invalid Origin"));
   }
 
-  if (list.length > 0 && list.includes(origin)) return callback(null, true);
-  if (isDevLocalOrigin(origin)) return callback(null, true);
+  if (process.env.NODE_ENV !== "production" && isDevLocalOrigin(origin)) {
+    return callback(null, true);
+  }
 
-  return callback(new Error("CORS blocked"));
+  return callback(new Error(`CORS blocked for origin: ${origin}`));
 }
