@@ -29,18 +29,20 @@ async function seedFixtures() {
   });
   await seedDefaultPlans();
   const plan = (await SuperAdmin.findById(catalogAdmin._id)).plans.find(
-    (p) => p.name === "PREMIUM"
-  );
+    (p) => p.name === "PREMIUM" || p.name === "PROFESSIONAL"
+  ) || (await SuperAdmin.findById(catalogAdmin._id)).plans[0];
 
   const tenantA = await Tenant.create({
     name: "Tenant A",
     subdomain: "tenant-a",
+    email: "tenant-a@test.com",
     status: "active",
     planId: plan._id,
   });
   const tenantB = await Tenant.create({
     name: "Tenant B",
     subdomain: "tenant-b",
+    email: "tenant-b@test.com",
     status: "active",
     planId: plan._id,
   });

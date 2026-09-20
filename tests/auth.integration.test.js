@@ -15,7 +15,7 @@ import { hashPassword } from "../services/password.js";
 import { generateKeysIfMissing, signAccessToken, verifyAccessToken } from "../utils/tokens.js";
 import { hashToken } from "../utils/tokens.js";
 import { seedTenantRoles, getTenantRoleBySlug } from "../services/roleService.js";
-import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import rateLimit from "express-rate-limit";
 import express from "express";
 
 let mongo;
@@ -219,7 +219,7 @@ describe("refresh token rotation", () => {
 
     const refresh1 = await agent
       .post("/api/auth/refresh")
-      .set("Cookie", setCookie);
+      .set("Cookie", Array.isArray(setCookie) ? setCookie.join("; ") : setCookie);
     expect(refresh1.status).toBe(200);
 
     const reuse = await request(app)
@@ -301,7 +301,7 @@ describe("login rate limiting", () => {
         standardHeaders: true,
         legacyHeaders: false,
         keyGenerator: (req) => {
-          const ip = ipKeyGenerator(req.ip || "127.0.0.1");
+          const ip = String(req.ip || "127.0.0.1");
           const email = String(req.body?.email || "student-a@test.com").toLowerCase();
           return `${ip}:${email}`;
         },

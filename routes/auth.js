@@ -14,6 +14,8 @@ import {
   getRefreshTtlSeconds,
   signAccessToken,
   verifyInviteToken,
+  signPasswordResetToken,
+  verifyPasswordResetToken,
 } from "../utils/tokens.js";
 import {
   clearRefreshCookie,
@@ -60,6 +62,18 @@ const signupSchema = z.object({
 
 const setInitialPasswordSchema = z.object({
   currentPassword: z.string().min(6).max(200),
+  newPassword: z.string().min(8).max(200),
+});
+
+const forgotPasswordSchema = z.object({
+  email: z
+    .string()
+    .email()
+    .transform((v) => v.toLowerCase().trim()),
+});
+
+const resetPasswordSchema = z.object({
+  resetToken: z.string().min(10),
   newPassword: z.string().min(8).max(200),
 });
 
@@ -397,6 +411,96 @@ router.post("/set-initial-password", requireDb, authenticate, requireTenantUser,
       "Password updated successfully",
       200
     )
+  );
+});
+
+/**
+ * POST /api/auth/forgot-password
+ * Request a password reset link for tenant user.
+ */
+router.post(
+  "/forgot-password",
+  requireDb,
+  tenantLoginLimiter,
+  resolveTenantFromSubdomain,
+  async (req, res) => {
+    const parsed = forgotPasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendError(res, "GENERAL_VALIDATION_FAILED", 400, {
+        issues: parsed.error.issues,
+        detail: validationMessageFromZod(parsed.error),
+      });
+    }
+
+    const tenant = req.resolvedTenant;
+    if (!tenant) {
+      return sendError(res, "AUTH_TENANT_WORKSPACE_REQUIRED", 400);
+    }
+
+    const { email } = parsed.data;
+    const user = await User.findOne({ email, tenantId: tenant._id, status: "active" });
+
+    // Always return 200 to prevent account enumeration
+    if (!user) {
+      return res.status(200).send(
+        prepareResponseMsg(
+          { ok: true },
+          true,
+          "If an account with that email exists, password reset instructions have been sent.",
+          200
+        )
+      );
+    }
+
+    const resetToken = signPasswordResetToken({
+      sub: String(user._id),
+      tenant_id: String(tenant._id),
+    });
+
+    logger.info(`Password reset requested for user ${user._id} on tenant ${tenant.subdomain}`);
+
+    return res.status(200).send(
+      prepareResponseMsg(
+        { ok: true, resetToken: process.env.NODE_ENV !== "production" ? resetToken : undefined },
+        true,
+        "If an account with that email exists, password reset instructions have been sent.",
+        200
+      )
+    );
+  }
+);
+
+/**
+ * POST /api/auth/reset-password
+ * Complete password reset using token.
+ */
+router.post("/reset-password", requireDb, tenantLoginLimiter, async (req, res) => {
+  const parsed = resetPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return sendError(res, "GENERAL_VALIDATION_FAILED", 400, {
+      issues: parsed.error.issues,
+      detail: validationMessageFromZod(parsed.error),
+    });
+  }
+
+  let claims;
+  try {
+    claims = verifyPasswordResetToken(parsed.data.resetToken);
+  } catch {
+    return sendError(res, "AUTH_SESSION_EXPIRED", 400, { detail: "Password reset link is invalid or expired." });
+  }
+
+  const user = await User.findOne({ _id: claims.sub, tenantId: claims.tenant_id, status: "active" });
+  if (!user) {
+    return sendError(res, "GENERAL_NOT_FOUND", 404, { detail: "User account not found." });
+  }
+
+  user.passwordHash = await hashPassword(parsed.data.newPassword);
+  user.isDefaultPassword = false;
+  await user.save();
+
+  return res.status(200).send(
+    prepareResponseMsg({ ok: true }, true, "Password reset successfully. You can now log in.", 200)
   );
 });
 

@@ -145,7 +145,7 @@ export async function markLessonComplete(req, res, next) {
     // courseId is denormalized onto Lesson; fall back to the module for older rows.
     let courseId = lesson.courseId;
     if (!courseId) {
-      const module = await Module.findById(lesson.moduleId);
+      const module = await Module.findOne({ _id: lesson.moduleId, tenantId });
       if (!module) return sendError(res, "MODULE_NOT_FOUND", 404);
       courseId = module.courseId;
     }
