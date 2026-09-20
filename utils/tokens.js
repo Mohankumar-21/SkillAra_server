@@ -238,3 +238,40 @@ export function verifyMfaChallengeToken(token) {
   }
   return decoded;
 }
+
+const RESET_PASSWORD_TTL_SECONDS = 60 * 60; // 1 hour
+const RESET_PASSWORD_CLAIMS = new Set(["sub", "tenant_id", "type"]);
+
+function sanitizePasswordResetPayload(payload) {
+  for (const key of Object.keys(payload)) {
+    if (!RESET_PASSWORD_CLAIMS.has(key)) {
+      throw Object.assign(new Error(`Disallowed reset JWT claim: ${key}`), { status: 500 });
+    }
+  }
+  if (!payload.sub || !payload.tenant_id) {
+    throw Object.assign(new Error("password reset token requires sub and tenant_id"), { status: 500 });
+  }
+  return {
+    sub: String(payload.sub),
+    tenant_id: String(payload.tenant_id),
+    type: "password_reset",
+  };
+}
+
+export function signPasswordResetToken(payload) {
+  const { privateKey } = loadKeys();
+  const claims = sanitizePasswordResetPayload({ ...payload, type: "password_reset" });
+  return jwt.sign(claims, privateKey, {
+    algorithm: "RS256",
+    expiresIn: RESET_PASSWORD_TTL_SECONDS,
+  });
+}
+
+export function verifyPasswordResetToken(token) {
+  const { publicKey } = loadKeys();
+  const decoded = jwt.verify(token, publicKey, { algorithms: ALLOWED_ALGORITHMS });
+  if (decoded.type !== "password_reset") {
+    throw Object.assign(new Error("Invalid password reset token type"), { status: 401 });
+  }
+  return decoded;
+}

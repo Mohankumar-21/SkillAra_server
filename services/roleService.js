@@ -120,11 +120,15 @@ function isRealSuperAdminDoc(doc) {
 
 /** Primary super admin account — platform roles catalog lives on this document's roles[] array. */
 export async function getPlatformRoleCatalogAdmin() {
-  const admin = await SuperAdmin.findOne({
+  let admin = await SuperAdmin.findOne({
     email: { $ne: LEGACY_PLATFORM_CONFIG_EMAIL },
   }).sort({ createdAt: 1 });
 
-  if (!isRealSuperAdminDoc(admin)) return null;
+  if (!admin) {
+    admin = await SuperAdmin.findOne().sort({ createdAt: 1 });
+  }
+
+  if (!admin) return null;
   if (!Array.isArray(admin.roles)) admin.roles = [];
   return admin;
 }

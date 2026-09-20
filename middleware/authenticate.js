@@ -3,6 +3,7 @@ import SuperAdmin, { LEGACY_PLATFORM_CONFIG_EMAIL } from "../models/SuperAdmin.j
 import { verifyAccessToken as verifyNewAccessToken } from "../utils/tokens.js";
 import { verifyAccessToken as verifyLegacyAccessToken } from "../services/jwt.js";
 import { sendError } from "../utils/helper.js";
+import logger from "../core/logger.js";
 
 /**
  * @param {object} decoded verified JWT claims
@@ -126,6 +127,7 @@ export async function authenticateLegacy(req, res, next) {
     if (!user || !activeStatuses.has(user.status)) {
       return sendError(res, "GENERAL_UNAUTHORIZED", 401);
     }
+    logger.warn(`Legacy HS256 token used for user ${user._id}. Please migrate to RS256.`);
     req.user = user;
     return next();
   } catch {

@@ -54,11 +54,10 @@ function sanitizeQuizForInstructor(quiz) {
 }
 
 async function resolveLessonContext(lessonId, tenantId) {
-  if (!lessonId || !tenantId) return null;
   const lesson = await Lesson.findOne({ _id: lessonId, tenantId });
   if (!lesson) return null;
 
-  const module = await Module.findById(lesson.moduleId);
+  const module = await Module.findOne({ _id: lesson.moduleId, tenantId });
   if (!module) return null;
 
   const course = await Course.findOne({ _id: module.courseId, tenantId });
