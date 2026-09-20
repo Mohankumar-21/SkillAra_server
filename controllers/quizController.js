@@ -54,7 +54,8 @@ function sanitizeQuizForInstructor(quiz) {
 }
 
 async function resolveLessonContext(lessonId, tenantId) {
-  const lesson = await Lesson.findById(lessonId);
+  if (!lessonId || !tenantId) return null;
+  const lesson = await Lesson.findOne({ _id: lessonId, tenantId });
   if (!lesson) return null;
 
   const module = await Module.findById(lesson.moduleId);

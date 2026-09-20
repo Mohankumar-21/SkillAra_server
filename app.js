@@ -44,6 +44,12 @@ export function createApp() {
     if (req.body && typeof req.body === "object") {
       req.body = sanitize(req.body);
     }
+    if (req.query && typeof req.query === "object") {
+      sanitize(req.query);
+    }
+    if (req.params && typeof req.params === "object") {
+      sanitize(req.params);
+    }
     next();
   });
 

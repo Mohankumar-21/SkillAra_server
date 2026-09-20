@@ -32,9 +32,8 @@ async function seedFixtures() {
     status: "active",
   });
   await seedDefaultPlans();
-  const plan = (await SuperAdmin.findById(catalogAdmin._id)).plans.find(
-    (p) => p.name === "PREMIUM"
-  );
+  const plans = (await SuperAdmin.findById(catalogAdmin._id)).plans;
+  const plan = plans.find((p) => p.name === "PROFESSIONAL" || p.name === "PREMIUM") || plans[0];
 
   const tenant = await Tenant.create({
     name: "Review Co",
