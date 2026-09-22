@@ -109,6 +109,8 @@ export function toPublicUser(user, ctx = null) {
     permissions = ownerRole?.permissions || fullPermissions(TENANT_PERMISSION_MODULES);
   }
 
+  const departmentDoc = doc.departmentId ? ctx?.masterMap?.get(String(doc.departmentId)) : null;
+
   return {
     id: doc._id,
     name: doc.name || "",

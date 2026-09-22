@@ -56,7 +56,9 @@ export function listMasterCategories() {
 
 async function loadTenantForMasterData(tenantId, session) {
   const query = Tenant.findById(tenantId);
-  if (session) query.session(session);
+  if (session && typeof session.inTransaction === "function" && session.inTransaction()) {
+    query.session(session);
+  }
   return query;
 }
 
@@ -134,8 +136,9 @@ export async function seedTenantMasterData(tenantId, { session } = {}) {
   }
 
   tenant.masterDataInitialized = true;
+  const hasTx = Boolean(session && typeof session.inTransaction === "function" && session.inTransaction());
   if (changed || tenant.isModified("masterDataInitialized")) {
-    await tenant.save(session ? { session } : undefined);
+    await tenant.save(hasTx ? { session } : undefined);
   }
 
   return created;

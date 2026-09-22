@@ -185,6 +185,69 @@ export async function sendTenantAdminWelcomeEmail(payload) {
   return sendInviteEmail({ to: payload.to, ...content });
 }
 
+export function buildTenantAdminPasswordResetEmailContent({
+  adminName,
+  tenantName,
+  loginUrl,
+  temporaryPassword,
+}) {
+  const greetingName = adminName ? ` ${adminName}` : "";
+  const subject = `Password Reset — Temporary Password for ${tenantName}`;
+  const text = [
+    `Hello${greetingName},`,
+    "",
+    `Your password for the organization admin account at ${tenantName} on SkillAra has been reset by a platform administrator.`,
+    "",
+    `Sign in: ${loginUrl}`,
+    `Temporary password: ${temporaryPassword}`,
+    "",
+    "You will be asked to choose a new password when you sign in.",
+    "",
+    "If you did not request this change, please contact platform support immediately.",
+    "",
+    "Best regards,",
+    "The SkillAra Team",
+  ].join("\n");
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; padding: 40px 20px; color: #1e293b; line-height: 1.6;">
+      <div style="max-width: 540px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; border: 1px solid #f1f5f9; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); padding: 40px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <span style="font-size: 28px; font-weight: 800; color: #4f46e5; letter-spacing: -0.025em;">SkillAra</span>
+        </div>
+        <h2 style="font-size: 22px; font-weight: 700; color: #0f172a; margin-top: 0; margin-bottom: 12px; text-align: center;">
+          Password Reset Notice
+        </h2>
+        <p style="font-size: 16px; color: #475569; margin-bottom: 20px;">
+          Hello${greetingName},
+        </p>
+        <p style="font-size: 16px; color: #475569; margin-bottom: 24px;">
+          Your password for <strong>${tenantName}</strong> has been reset by a platform administrator.
+        </p>
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 20px; margin-bottom: 28px;">
+          <p style="margin: 0 0 10px; font-size: 14px; color: #64748b;"><strong style="color:#0f172a;">Sign in URL</strong><br /><a href="${loginUrl}" style="color:#4f46e5; word-break: break-all;">${loginUrl}</a></p>
+          <p style="margin: 0; font-size: 14px; color: #64748b;"><strong style="color:#0f172a;">Temporary password</strong><br /><code style="display:inline-block; margin-top:4px; background:#eef2ff; color:#3730a3; padding:6px 10px; border-radius:6px; font-size:14px; letter-spacing:0.02em;">${temporaryPassword}</code></p>
+        </div>
+        <div style="text-align: center; margin-bottom: 28px;">
+          <a href="${loginUrl}" style="display: inline-block; background-color: #4f46e5; color: #ffffff; font-size: 15px; font-weight: 600; text-decoration: none; padding: 12px 32px; border-radius: 8px;">
+            Sign in to Workspace
+          </a>
+        </div>
+        <p style="font-size: 14px; color: #64748b; margin-bottom: 0;">
+          You will be prompted to set a new password on your next sign-in.
+        </p>
+      </div>
+    </div>
+  `.trim();
+
+  return { subject, text, html, from: resolveFromAddress() };
+}
+
+export async function sendTenantAdminPasswordResetEmail(payload) {
+  const content = buildTenantAdminPasswordResetEmailContent(payload);
+  return sendInviteEmail({ to: payload.to, ...content });
+}
+
 /** Reset cached transporter (tests). */
 export function resetEmailTransport() {
   transporterPromise = null;

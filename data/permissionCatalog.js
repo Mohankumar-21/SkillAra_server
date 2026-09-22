@@ -54,7 +54,7 @@ export const PLATFORM_PERMISSION_MODULES = [
   { id: "maintenance-mode", label: "Maintenance Mode", actions: ["view", "enable", "disable", "configure"] },
 ];
 
-function fullPermissions(modules) {
+export function fullPermissions(modules) {
   const perms = {};
   modules.forEach((m) => {
     perms[m.id] = [...m.actions];

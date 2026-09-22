@@ -25,8 +25,22 @@ export async function resolveTenantFromSubdomain(req, res, next) {
     return sendError(res, "TENANT_NOT_FOUND", 404, { subdomain });
   }
 
-  if (tenant.status === "suspended" || tenant.status === false) {
-    return sendError(res, "AUTH_TENANT_INACTIVE", 403);
+  if (
+    tenant.subscriptionStatus === "TRIAL" &&
+    tenant.subscriptionEndDate &&
+    new Date() > new Date(tenant.subscriptionEndDate)
+  ) {
+    tenant.subscriptionStatus = "EXPIRED";
+    await Tenant.updateOne({ _id: tenant._id }, { $set: { subscriptionStatus: "EXPIRED" } });
+  }
+
+  if (tenant.status === "suspended" || tenant.status === false || tenant.subscriptionStatus === "EXPIRED") {
+    return sendError(res, "AUTH_TENANT_INACTIVE", 403, {
+      detail:
+        tenant.subscriptionStatus === "EXPIRED"
+          ? "Organization trial period has expired. Please upgrade your subscription plan to continue."
+          : "Organization is inactive.",
+    });
   }
 
   req.resolvedTenant = tenant;
