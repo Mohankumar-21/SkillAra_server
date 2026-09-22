@@ -2,6 +2,7 @@ import Tenant from "../models/Tenant.js";
 import User from "../models/User.js";
 import { attachMasterLabelsToUsers, validateMasterDataRef } from "../services/masterDataService.js";
 import { normalizeRoleForApi, normalizeStatusForApi } from "./userRoleMap.js";
+import { fullPermissions, TENANT_PERMISSION_MODULES } from "../data/permissionCatalog.js";
 
 function normalizeApiRole(role) {
   return String(role || "")
@@ -102,7 +103,11 @@ export function toPublicUser(user, ctx = null) {
   const apiStatus = normalizeStatusForApi(doc.status);
   const roleLabel = roleDoc?.name || (isTenantAdmin ? "Organization Owner" : "—");
 
-  const departmentDoc = doc.departmentId ? ctx?.masterMap?.get(String(doc.departmentId)) : null;
+  let permissions = roleDoc?.permissions || {};
+  if (isTenantAdmin && (!permissions || Object.keys(permissions).length === 0)) {
+    const ownerRole = ctx?.roleMap ? Array.from(ctx.roleMap.values()).find(isOwnerRoleDoc) : null;
+    permissions = ownerRole?.permissions || fullPermissions(TENANT_PERMISSION_MODULES);
+  }
 
   return {
     id: doc._id,
@@ -129,7 +134,7 @@ export function toPublicUser(user, ctx = null) {
      * server still enforces every action independently. Only attached for the
      * signed-in user's own session payload, so user listings stay small.
      */
-    ...(ctx?.includePermissions ? { permissions: roleDoc?.permissions || {} } : {}),
+    ...(ctx?.includePermissions ? { permissions } : {}),
     createdAt: doc.createdAt,
   };
 }

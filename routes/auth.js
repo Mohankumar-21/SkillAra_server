@@ -31,8 +31,15 @@ import { authenticate } from "../middleware/authenticate.js";
 import { requireTenantUser } from "../middleware/requireTenantUser.js";
 import { toPublicUsers, userHasDefaultPassword } from "../utils/user.js";
 import { getAccessTokenRoleForUser, getTenantRoleBySlug } from "../services/roleService.js";
+import { changePassword } from "../controllers/userController.js";
+import { validateBody } from "../utils/validate.js";
 
 const router = express.Router();
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(6).max(200),
+  newPassword: z.string().min(6).max(200),
+});
 
 const loginSchema = z.object({
   email: z
@@ -503,5 +510,18 @@ router.post("/reset-password", requireDb, tenantLoginLimiter, async (req, res) =
     prepareResponseMsg({ ok: true }, true, "Password reset successfully. You can now log in.", 200)
   );
 });
+
+/**
+ * POST /api/auth/change-password
+ * Change password for authenticated tenant user.
+ */
+router.post(
+  "/change-password",
+  requireDb,
+  authenticate,
+  requireTenantUser,
+  validateBody(changePasswordSchema),
+  changePassword
+);
 
 export default router;

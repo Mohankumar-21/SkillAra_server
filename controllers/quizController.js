@@ -306,8 +306,9 @@ export async function getMyAttempts(req, res, next) {
       tenantId: req.tenantId,
     };
 
-    if (req.user.role === "STUDENT") {
-      filter.userId = getActor(req).id;
+    const actor = getActor(req);
+    if (actor?.isLearner) {
+      filter.userId = actor.id;
     }
 
     const attempts = await QuizAttempt.find(filter)
