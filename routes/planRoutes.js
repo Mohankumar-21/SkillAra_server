@@ -12,7 +12,7 @@ const router = express.Router();
 const PLAN_NAMES = ["FREE", "STARTER", "PROFESSIONAL", "ENTERPRISE"];
 const BILLING_CYCLES = ["monthly", "yearly"];
 
-const featuresSchema = z.record(z.any());
+const featuresSchema = z.record(z.string(), z.any());
 
 const planCreateSchema = z.object({
   name: z.string().trim().toUpperCase().refine((v) => PLAN_NAMES.includes(v), "Invalid plan name"),
@@ -22,12 +22,12 @@ const planCreateSchema = z.object({
   isActive: z.boolean().optional().default(true),
 });
 
-const planUpdateSchema = planCreateSchema.partial().extend({
-  name: planCreateSchema.shape.name.optional(),
-  price: planCreateSchema.shape.price.optional(),
-  billingCycle: planCreateSchema.shape.billingCycle.optional(),
-  features: planCreateSchema.shape.features.optional(),
-  isActive: planCreateSchema.shape.isActive.optional(),
+const planUpdateSchema = z.object({
+  name: z.string().trim().toUpperCase().refine((v) => PLAN_NAMES.includes(v), "Invalid plan name").optional(),
+  price: z.number().nonnegative().optional(),
+  billingCycle: z.enum(BILLING_CYCLES).optional(),
+  features: featuresSchema.optional(),
+  isActive: z.boolean().optional(),
 });
 
 function validatePlanBody(schema) {
