@@ -153,7 +153,8 @@ tenantRouter.patch(
   [
     body("tenant_name").optional().isString().trim().isLength({ min: 2, max: 80 }),
     body("email").optional().isEmail().toLowerCase().trim(),
-    body("planId").optional().matches(/^[0-9a-fA-F]{24}$/),
+    body("planId").optional().isString().trim(),
+    body("plan").optional().isString().trim(),
     body("status").optional().isBoolean(),
     body("subscriptionStatus").optional().isIn(["ACTIVE", "EXPIRED", "TRIAL"]),
   ],
