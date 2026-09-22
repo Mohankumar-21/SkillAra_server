@@ -376,8 +376,8 @@ export async function submitMockTest(req, res, next) {
 
 export async function getMyMockTestAttempts(req, res, next) {
   try {
-    const filter = { mockTestId: req.params.id, tenantId: req.tenantId };
-    if (req.user.role === "STUDENT") filter.userId = getActor(req).id;
+    const actor = getActor(req);
+    if (actor?.isLearner) filter.userId = actor.id;
 
     const attempts = await MockTestAttempt.find(filter)
       .populate("userId", "name email")

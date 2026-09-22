@@ -74,7 +74,15 @@ export async function registerStudent(req, res) {
 export async function changePassword(req, res, next) {
   try {
     const { currentPassword, newPassword } = req.body;
-    const user = req.user;
+    const userId = req.user?.id || req.user?._id;
+    if (!userId) {
+      return sendError(res, "GENERAL_UNAUTHORIZED", 401);
+    }
+
+    const user = await User.findById(userId);
+    if (!user || !user.passwordHash) {
+      return sendError(res, "GENERAL_UNAUTHORIZED", 401);
+    }
 
     const ok = await verifyPassword(currentPassword, user.passwordHash);
     if (!ok) {
@@ -82,10 +90,9 @@ export async function changePassword(req, res, next) {
     }
 
     const passwordHash = await hashPassword(newPassword);
-    await User.updateOne(
-      { _id: user._id },
-      { $set: { passwordHash, isDefaultPassword: false } }
-    );
+    user.passwordHash = passwordHash;
+    user.isDefaultPassword = false;
+    await user.save();
 
     return res
       .status(200)
