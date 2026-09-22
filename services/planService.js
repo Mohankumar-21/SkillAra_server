@@ -317,7 +317,12 @@ export async function migrateLegacyPlansCollection() {
 
 export async function buildPlanMap() {
   const plans = await listPlans();
-  return new Map(plans.map((p) => [String(p._id || p.id), p]));
+  const map = new Map();
+  for (const p of plans) {
+    if (p._id || p.id) map.set(String(p._id || p.id), p);
+    if (p.name) map.set(String(p.name).toUpperCase(), p);
+  }
+  return map;
 }
 
 export async function resolvePlanName(planId) {

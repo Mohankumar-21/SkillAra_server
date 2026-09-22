@@ -169,7 +169,7 @@ export const updateTenant = async (req, res, next) => {
     const planMap = await buildPlanMap();
     const data = normalizeTenantForApi(
       tenant.toObject(),
-      planMap.get(String(tenant.planId)) || tenant.plan
+      planMap.get(String(tenant.planId)) || planMap.get(String(tenant.plan).toUpperCase()) || tenant.plan
     );
     return res.status(200).send(prepareResponseMsg(data, true, getMessage(101), 200));
   } catch (err) {
