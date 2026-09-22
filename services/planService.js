@@ -45,7 +45,10 @@ export async function listPlans({ activeOnly = false } = {}) {
 export async function getPlanById(planId) {
   const admin = await getCatalogAdmin();
   if (!admin || !planId) return null;
-  const plan = findPlanById(admin.plans, planId);
+  let plan = findPlanById(admin.plans, planId);
+  if (!plan) {
+    plan = findPlanByName(admin.plans, planId);
+  }
   if (!plan || plan.isActive === false) return null;
   return plan;
 }
@@ -53,7 +56,11 @@ export async function getPlanById(planId) {
 export async function getPlanByIdIncludingInactive(planId) {
   const admin = await getCatalogAdmin();
   if (!admin || !planId) return null;
-  return findPlanById(admin.plans, planId);
+  let plan = findPlanById(admin.plans, planId);
+  if (!plan) {
+    plan = findPlanByName(admin.plans, planId);
+  }
+  return plan;
 }
 
 export async function createPlan(data) {

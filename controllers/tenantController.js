@@ -141,13 +141,18 @@ export const updateTenant = async (req, res, next) => {
       }
       tenant.email = email;
     }
-    if (planId !== undefined) {
-      const plan = await getPlanById(planId);
+    const targetPlan = req.body.planId || req.body.plan;
+    if (targetPlan !== undefined && targetPlan !== null && targetPlan !== "") {
+      const plan = await getPlanById(targetPlan);
       if (!plan || plan.isActive !== true) {
         return sendError(res, "PLAN_INVALID", 400);
       }
       tenant.planId = plan._id;
       tenant.plan = plan.name;
+
+      if (!subscriptionStatus && plan.name !== "FREE" && (tenant.subscriptionStatus === "TRIAL" || tenant.subscriptionStatus === "EXPIRED")) {
+        tenant.subscriptionStatus = "ACTIVE";
+      }
     }
     if (typeof status === "boolean") tenant.status = booleanToTenantStatus(status);
     if (subscriptionStatus) tenant.subscriptionStatus = subscriptionStatus;
