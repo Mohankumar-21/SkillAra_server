@@ -226,8 +226,9 @@ export async function seedPlatformRoles() {
 }
 
 export async function seedTenantRoles(tenantId, { session } = {}) {
+  const hasTx = Boolean(session && typeof session.inTransaction === "function" && session.inTransaction());
   const query = Tenant.findById(tenantId);
-  if (session) query.session(session);
+  if (hasTx) query.session(session);
   const tenant = await query;
   if (!tenant) return [];
 
@@ -250,7 +251,7 @@ export async function seedTenantRoles(tenantId, { session } = {}) {
     }
   }
 
-  if (changed) await tenant.save(session ? { session } : undefined);
+  if (changed) await tenant.save(hasTx ? { session } : undefined);
   return tenant.roles;
 }
 
@@ -335,8 +336,9 @@ export async function resyncCustomRoleLegacyHints(tenantId) {
 }
 
 export async function getTenantRoles(tenantId, { session } = {}) {
+  const hasTx = Boolean(session && typeof session.inTransaction === "function" && session.inTransaction());
   const query = Tenant.findById(tenantId).select("roles");
-  if (session) query.session(session);
+  if (hasTx) query.session(session);
   const tenant = await query;
   return tenant?.roles || [];
 }

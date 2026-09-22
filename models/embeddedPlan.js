@@ -23,6 +23,11 @@ export const embeddedPlanSchema = new mongoose.Schema(
       required: true,
       enum: BILLING_CYCLES,
     },
+    trialDays: {
+      type: Number,
+      default: 14,
+      min: 0,
+    },
     features: {
       maxStudents: { type: Number, default: null },
       maxInstructors: { type: Number, default: null },

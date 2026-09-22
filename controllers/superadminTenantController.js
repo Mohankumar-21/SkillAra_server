@@ -12,7 +12,7 @@ import { getOrganizationTypeById } from "../services/platformMasterService.js";
 import logger from "../core/logger.js";
 import { hashPassword } from "../services/password.js";
 
-import { sendTenantAdminWelcomeEmail } from "../services/emailService.js";
+import { sendTenantAdminWelcomeEmail, sendTenantAdminPasswordResetEmail } from "../services/emailService.js";
 
 import { prepareResponseMsg, sendError } from "../utils/helper.js";
 
@@ -57,26 +57,19 @@ function readBranding(body) {
 
 
 
-function subscriptionEndDate(plan, startDate) {
-
+function subscriptionEndDate(plan, startDate, isTrial = true) {
   const end = new Date(startDate);
-
-  if (plan?.billingCycle === "monthly") {
-
-    end.setMonth(end.getMonth() + 1);
-
-  } else if (plan?.billingCycle === "yearly") {
-
-    end.setFullYear(end.getFullYear() + 1);
-
-  } else {
-
-    end.setMonth(end.getMonth() + 1);
-
+  if (isTrial) {
+    const days = Number(plan?.trialDays ?? 14);
+    end.setDate(end.getDate() + days);
+    return end;
   }
-
+  if (plan?.billingCycle === "yearly") {
+    end.setFullYear(end.getFullYear() + 1);
+  } else {
+    end.setMonth(end.getMonth() + 1);
+  }
   return end;
-
 }
 
 
@@ -255,9 +248,7 @@ export async function createTenantWithAdmin(req, res, next) {
     const subscriptionStartDate = new Date();
 
     const subscriptionEndDateValue = planDoc
-
-      ? subscriptionEndDate(planDoc, subscriptionStartDate)
-
+      ? subscriptionEndDate(planDoc, subscriptionStartDate, subscriptionStatus === "TRIAL")
       : null;
 
 
@@ -285,7 +276,13 @@ export async function createTenantWithAdmin(req, res, next) {
 
     const temporaryPassword = generateTemporaryPassword();
 
-    session.startTransaction();
+    try {
+      session.startTransaction();
+    } catch (txErr) {
+      logger.warn(`[tenant:create] Could not start transaction (standalone DB?): ${txErr.message}`);
+    }
+
+    const sessionOpt = session && session.inTransaction() ? { session } : {};
 
     const [tenant] = await Tenant.create(
       [
@@ -303,37 +300,25 @@ export async function createTenantWithAdmin(req, res, next) {
           timezone: String(body.timezone || "").trim(),
           currency: String(body.currency || "").trim(),
           logo: logoUrl,
-
           branding: readBranding(body),
-
           plan: planLabel,
-
           planId: planDoc?._id || null,
-
           subscriptionStatus,
-
           subscriptionStartDate,
-
           subscriptionEndDate: subscriptionEndDateValue,
-
           user_count: 1,
-
           status: active ? "active" : "suspended",
-
         },
-
       ],
-
-      { session }
-
+      sessionOpt
     );
 
-
-
-    await seedNewTenantDefaults(tenant._id, { session });
-    const ownerRole = await getTenantRoleBySlug(tenant._id, "organization-owner", { session });
+    await seedNewTenantDefaults(tenant._id, sessionOpt);
+    const ownerRole = await getTenantRoleBySlug(tenant._id, "organization-owner", sessionOpt);
     if (!ownerRole?._id) {
-      await session.abortTransaction();
+      if (session && session.inTransaction()) {
+        await session.abortTransaction();
+      }
       return sendError(res, "GENERAL_UNKNOWN", 500, {
         detail: "Failed to provision the organization owner role. Please try again.",
       });
@@ -342,55 +327,55 @@ export async function createTenantWithAdmin(req, res, next) {
     const passwordHash = await hashPassword(temporaryPassword);
 
     const [adminUser] = await User.create(
-
       [
-
         {
-
           tenantId: tenant._id,
-
           name: adminName || `${name} Admin`,
-
           email: adminEmail,
-
           phone: adminPhone,
-
           passwordHash,
-
           roleId: ownerRole._id,
-
           status: "active",
-
           isDefaultPassword: true,
-
           isTenantAdmin: true,
-
         },
-
       ],
-
-      { session }
-
+      sessionOpt
     );
 
-
-
-    await session.commitTransaction();
-
-
+    if (session && session.inTransaction()) {
+      await session.commitTransaction();
+    }
 
     const loginUrl = buildTenantLoginUrl(subdomain);
     const sendWelcomeEmail = body.sendWelcomeEmail !== false;
-    let emailResult = { sent: false, mode: "skipped" };
 
     if (sendWelcomeEmail) {
-      emailResult = await sendTenantAdminWelcomeEmail({
+      // Dispatch email asynchronously in background so org creation responds instantly (<200ms)
+      sendTenantAdminWelcomeEmail({
         to: adminEmail,
         tenantName: name,
         adminName: adminName || adminEmail,
         loginUrl,
         temporaryPassword,
-      });
+      })
+        .then((result) => {
+          if (!result.sent) {
+            logger.info("[tenant-admin:credentials] Email not delivered via SMTP", {
+              adminEmail,
+              loginUrl,
+              temporaryPassword,
+              mode: result.mode,
+              error: result.error || null,
+            });
+          }
+        })
+        .catch((err) => {
+          logger.error("[tenant-admin:credentials] Welcome email background error", {
+            adminEmail,
+            error: err.message,
+          });
+        });
     }
 
     await writeAuditLog({
@@ -403,31 +388,11 @@ export async function createTenantWithAdmin(req, res, next) {
       metadata: {
         subdomain: tenant.subdomain,
         adminEmail,
-        welcomeEmailSent: emailResult.sent === true,
-        welcomeEmailMode: emailResult.mode || null,
+        sendWelcomeEmail,
       },
     });
 
-    if (sendWelcomeEmail && !emailResult.sent) {
-      logger.info("[tenant-admin:credentials] Email not sent — share with owner manually", {
-        adminEmail,
-        loginUrl,
-        temporaryPassword,
-        mode: emailResult.mode,
-        error: emailResult.error || null,
-      });
-    }
-
     const populated = tenant.toObject();
-
-    const emailFailed = sendWelcomeEmail && emailResult.sent !== true;
-    const successMessage = !sendWelcomeEmail
-      ? "Organization created. Welcome email was skipped."
-      : emailResult.sent
-        ? "Organization created. A welcome email with a temporary password was sent to the owner."
-        : emailResult.mode === "misconfigured" || emailResult.mode === "log"
-          ? "Organization created. Welcome email was not sent — configure SMTP_HOST, SMTP_USER, and SMTP_PASS on the server."
-          : "Organization created. Welcome email could not be sent — check SMTP settings and server logs.";
 
     return res.status(201).send(
       prepareResponseMsg(
@@ -435,28 +400,26 @@ export async function createTenantWithAdmin(req, res, next) {
           tenant: normalizeTenantForApi(populated, planLabel),
           tenantAdmin: toPublicUser(adminUser),
           tenantAdminUser: toPublicUser(adminUser),
-          welcomeEmailSent: emailResult.sent === true,
-          welcomeEmailMode: emailResult.mode || null,
-          welcomeEmailError: emailResult.error || null,
           loginUrl,
-          ...(emailFailed || !sendWelcomeEmail ? { temporaryPassword } : {}),
+          temporaryPassword,
         },
         true,
-        successMessage,
+        "Organization created successfully. Temporary credentials generated.",
         201
       )
     );
 
   } catch (err) {
-
-    await session.abortTransaction();
-
+    if (session && session.inTransaction()) {
+      try {
+        await session.abortTransaction();
+      } catch {
+        // ignore secondary abort error
+      }
+    }
     return next(err);
-
   } finally {
-
     session.endSession();
-
   }
 
 }
@@ -485,34 +448,42 @@ export async function resetTenantAdminPassword(req, res, next) {
 
     const subdomain = tenant.subdomain || tenant.sub_domain;
     const loginUrl = buildTenantLoginUrl(subdomain);
-    const emailResult = await sendTenantAdminWelcomeEmail({
+    const tenantName = tenant.name || tenant.tenant_name || subdomain;
+
+    sendTenantAdminPasswordResetEmail({
       to: adminUser.email,
-      tenantName: tenant.name || tenant.tenant_name || subdomain,
+      tenantName,
       adminName: adminUser.name || adminUser.email,
       loginUrl,
       temporaryPassword,
-    });
-
-    if (!emailResult.sent) {
-      logger.info("[tenant-admin:credentials] Password reset — share manually", {
-        adminEmail: adminUser.email,
-        loginUrl,
-        temporaryPassword,
+    })
+      .then((result) => {
+        if (!result.sent) {
+          logger.info("[tenant-admin:reset-password] Reset email not delivered via SMTP", {
+            adminEmail: adminUser.email,
+            loginUrl,
+            temporaryPassword,
+            mode: result.mode,
+            error: result.error || null,
+          });
+        }
+      })
+      .catch((err) => {
+        logger.error("[tenant-admin:reset-password] Reset email background error", {
+          adminEmail: adminUser.email,
+          error: err.message,
+        });
       });
-    }
 
     return res.status(200).send(
       prepareResponseMsg(
         {
           email: adminUser.email,
           loginUrl,
-          welcomeEmailSent: emailResult.sent === true,
-          ...(!emailResult.sent ? { temporaryPassword } : {}),
+          temporaryPassword,
         },
         true,
-        emailResult.sent
-          ? "New temporary password emailed to the organization owner."
-          : "New temporary password generated. Share it with the owner manually.",
+        "New temporary password generated and reset email dispatched to the organization owner.",
         200
       )
     );
